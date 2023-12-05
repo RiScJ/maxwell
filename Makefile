@@ -1,0 +1,15 @@
+CC=gcc
+CFLAGS=-Wall -Wextra -Werror -lglfw -lGL -lm
+
+all: maxwell
+
+maxwell: maxwell.o
+	$(CC) $(CFLAGS) -o maxwell maxwell.o
+
+maxwell.o: maxwell.c 
+	$(CC) $(CFLAGS) -c maxwell.c
+
+clean:
+	rm -f maxwell maxwell.o
+
+.PHONY: all clean
