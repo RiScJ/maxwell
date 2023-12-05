@@ -2,26 +2,85 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-float randNormalFloat(void) {
-	return (float)rand() / (float)RAND_MAX;
-}
-
-void initData(float* data, int width, int height) {
+void initFields(float* Ez, float* Hx, float* Hy, int width, int height) {
+	int index;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
-			data[y * width + x] = randNormalFloat(); // Placeholder
+			index = y * width + x;
+			Ez[index] = 0;
+			Hx[index] = 0;
+			Hy[index] = 0;
 		}
 	}
+}
+
+float randNormalFloat(void) {
+	return (float)rand() / (float)RAND_MAX;
 }
 
 void glfw_error_callback(int error, const char* desc) {
 	fprintf(stderr, "GLFW error %d: %s\n", error, desc);
 }
 
-void updateImage(float* data, int width, int height) {
-	initData(data, width, height);
+void updateFields(float* Ez, float* Hx, float* Hy, int width, int height) {
+	const float dt = 1e-9;
+	const float dx = 1e-3;
+	const float dy = 1e-3;
+	const float eps = 8.854e-12;
+	const float mu = 1.2566e-6;
+
+ 	for (int j = 0; j < height - 1; j++) {
+        for (int i = 0; i < width - 1; i++) {
+            Hx[j * width + i] -= (dt / mu) * (Ez[j * width + i + 1] - Ez[j * width + i]) / dy;
+            Hy[j * width + i] += (dt / mu) * (Ez[(j + 1) * width + i] - Ez[j * width + i]) / dx;
+        }
+    }
+
+    // Update E field
+    for (int j = 1; j < height - 1; j++) {
+        for (int i = 1; i < width - 1; i++) {
+            Ez[j * width + i] += (dt / eps) * ((Hy[j * width + i] - Hy[j * width + i - 1]) / dx - (Hx[j * width + i] - Hx[(j - 1) * width + i]) / dy);
+        }
+    }
+
+    // Apply PEC boundary conditions: E field is zero at all boundaries
+    // Top and bottom boundaries
+    for (int i = 0; i < width; i++) {
+        Ez[i] = 0; // Top boundary
+        Ez[(height - 1) * width + i] = 0; // Bottom boundary
+    }
+
+    // Left and right boundaries
+    for (int j = 0; j < height; j++) {
+        Ez[j * width] = 0; // Left boundary
+        Ez[j * width + (width - 1)] = 0; // Right boundary
+    }
+}
+
+void updateImage(float* Ez, float* Hx, float* Hy, 
+		int width, int height) {
+	updateFields(Ez, Hx, Hy, width, height);	
+	
+	float* visualData = (float*)malloc(width * height * sizeof(float));
+	int index;
+	float minVisualDatum = 0, maxVisualDatum = 0;
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			index = y * width + x;
+			visualData[index] = Ez[index]*Ez[index];
+			if (visualData[index] < minVisualDatum) 
+					minVisualDatum = visualData[index];
+			if (visualData[index] > maxVisualDatum)
+					maxVisualDatum = visualData[index];
+		}
+	}
+	for (int i = 0; i < width * height; ++i) {
+		visualData[i] -= minVisualDatum;
+		visualData[i] /= maxVisualDatum;
+	}
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_FLOAT, 
-			data);
+			visualData);
+	free(visualData);
 }
 
 int main(void) {
@@ -43,8 +102,10 @@ int main(void) {
 	}
 	glfwMakeContextCurrent(window);
 
-	float* data = (float*)malloc(width * height * sizeof(float));
-	initData(data, width, height);
+	float* Ez = (float*)malloc(width * height * sizeof(float));
+	float* Hx = (float*)malloc(width * height * sizeof(float));
+	float* Hy = (float*)malloc(width * height * sizeof(float));
+	initFields(Ez, Hx, Hy, width, height);
 
 	GLuint texture;
 	glGenTextures(1, &texture);
@@ -53,9 +114,8 @@ int main(void) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-
 	while (!glfwWindowShouldClose(window)) {
-		updateImage(data, width, height);
+		updateImage(Ez, Hx, Hy, width, height);
 		glClear(GL_COLOR_BUFFER_BIT);
 		
 		glEnable(GL_TEXTURE_2D);
@@ -73,7 +133,9 @@ int main(void) {
 		glfwPollEvents();
 	}
 
-	free(data);
+	free(Ez);
+	free(Hx);
+	free(Hy);
 	glfwTerminate();
 	return 0;
 }
