@@ -18,6 +18,12 @@ void glfw_error_callback(int error, const char* desc) {
 	fprintf(stderr, "GLFW error %d: %s\n", error, desc);
 }
 
+void updateImage(float* data, int width, int height) {
+	initData(data, width, height);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_FLOAT, 
+			data);
+}
+
 int main(void) {
 	glfwSetErrorCallback(glfw_error_callback);
 
@@ -47,10 +53,9 @@ int main(void) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, width, height, 0, GL_RED, GL_FLOAT, 
-			data);
 
 	while (!glfwWindowShouldClose(window)) {
+		updateImage(data, width, height);
 		glClear(GL_COLOR_BUFFER_BIT);
 		
 		glEnable(GL_TEXTURE_2D);
