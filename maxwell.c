@@ -1,6 +1,7 @@
 #include <GLFW/glfw3.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 
 void initFields(float* Ez, float* Hx, float* Hy, int width, int height) {
 	int index;
@@ -22,12 +23,28 @@ void glfw_error_callback(int error, const char* desc) {
 	fprintf(stderr, "GLFW error %d: %s\n", error, desc);
 }
 
-void updateFields(float* Ez, float* Hx, float* Hy, int width, int height) {
-	const float dt = 1e-9;
-	const float dx = 1e-3;
-	const float dy = 1e-3;
-	const float eps = 8.854e-12;
-	const float mu = 1.2566e-6;
+float gaussianPulse(float t, float t0, float spread) {
+	return exp(-pow((t - t0) / spread, 2));
+}
+
+void updateFields(float* Ez, float* Hx, float* Hy, int width, int height, 
+		float time) {
+	const float dt = 1e-5;
+	const float dx = 1.0f;
+	const float dy = 1.0f;
+	const float eps = 1.0f; //8.854e-12;
+	const float mu = 1.0f; //1.2566e-6;
+
+	float t0 = 2e1;
+	float spread = 2;
+	int sourceX = width / 2;
+	int sourceY = height / 2;
+
+	float frequency = 1e9;
+	float omega = 2 * M_PI * frequency;
+
+	//Ez[sourceY * width + sourceX] += gaussianPulse(time, t0, spread);
+	Ez[sourceY * width + sourceX] += sin(omega * time);
 
  	for (int j = 0; j < height - 1; j++) {
         for (int i = 0; i < width - 1; i++) {
@@ -58,16 +75,17 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height) {
 }
 
 void updateImage(float* Ez, float* Hx, float* Hy, 
-		int width, int height) {
-	updateFields(Ez, Hx, Hy, width, height);	
+		int width, int height, float time) {
+	updateFields(Ez, Hx, Hy, width, height, time);	
 	
+	printf("%f\n", Ez[512 * width + 512]);
 	float* visualData = (float*)malloc(width * height * sizeof(float));
 	int index;
 	float minVisualDatum = 0, maxVisualDatum = 0;
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			index = y * width + x;
-			visualData[index] = Ez[index]*Ez[index];
+			visualData[index] = Ez[index];
 			if (visualData[index] < minVisualDatum) 
 					minVisualDatum = visualData[index];
 			if (visualData[index] > maxVisualDatum)
@@ -87,7 +105,7 @@ int main(void) {
 	glfwSetErrorCallback(glfw_error_callback);
 
 	GLFWwindow* window;
-	const int width = 512, height = 512;
+	const int width = 1024, height = 1024;
 	
 	if (!glfwInit()) {
 		fprintf(stderr, "Failed to initialize glfw\n");
@@ -114,8 +132,10 @@ int main(void) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+	float time = 0.0f;
+	float dt = 1.0f;
 	while (!glfwWindowShouldClose(window)) {
-		updateImage(Ez, Hx, Hy, width, height);
+		updateImage(Ez, Hx, Hy, width, height, time);
 		glClear(GL_COLOR_BUFFER_BIT);
 		
 		glEnable(GL_TEXTURE_2D);
@@ -131,6 +151,8 @@ int main(void) {
 		glfwSwapBuffers(window);
 
 		glfwPollEvents();
+		
+		time += dt;
 	}
 
 	free(Ez);
