@@ -33,41 +33,44 @@ float gaussianPulse(float t, float t0, float spread) {
 }
 
 void updateFields(float* Ez, float* Hx, float* Hy, int width, int height, 
-		float time) {
-	const float dx = 1e-5;
-	const float dy = 1e-5;
+		float* time) {
+	const float dx = 1e1;
+	const float dy = 1e1;
 	const float eps = 8.854e-12;
 	const float mu = 1.2566e-6;
-	const float dt = 1e-1 / (SPEED_OF_LIGHT * sqrt(1 / (dx * dx) + 1 / (dy * dy)));
+	const float dt = 0.9e0 / (SPEED_OF_LIGHT * sqrt(1 / (dx * dx) + 1 / (dy * dy)));
+
+	*time += dt;
 
 	float t0 = 1e-9;
 	float spread = 1e-2;
 	int sourceX = width / 2;
 	int sourceY = height / 2;
 
-	float frequency = 1e8;
+	float frequency = 1.5e6;
 	float omega = 2 * M_PI * frequency;
 
 //	Ez[sourceY * width + sourceX] += gaussianPulse(time, t0, spread);
 
+	float phi = sin(*time * 1e4);
 
-	Ez[500 * width + 460] += sin(2 * M_PI * 1e6 * time + 0.1);
-	Ez[500 * width + 465] += sin(2 * M_PI * 1e6 * time + 0.2);
-	Ez[500 * width + 470] += sin(2 * M_PI * 1e6 * time + 0.3);
-	Ez[500 * width + 475] += sin(2 * M_PI * 1e6 * time + 0.4);
-	Ez[500 * width + 480] += sin(2 * M_PI * 1e6 * time + 0.5);
-	Ez[500 * width + 485] += sin(2 * M_PI * 1e6 * time + 0.6);
-	Ez[500 * width + 490] += sin(2 * M_PI * 1e6 * time + 0.7);
-	Ez[500 * width + 495] += sin(2 * M_PI * 1e6 * time + 0.8);
-	Ez[500 * width + 500] += sin(2 * M_PI * 1e6 * time + 0.9);
-	Ez[500 * width + 505] += sin(2 * M_PI * 1e6 * time + 1.0);
-	Ez[500 * width + 510] += sin(2 * M_PI * 1e6 * time + 1.1);
-	Ez[500 * width + 515] += sin(2 * M_PI * 1e6 * time + 1.2);
-	Ez[500 * width + 520] += sin(2 * M_PI * 1e6 * time + 1.3);
-	Ez[500 * width + 525] += sin(2 * M_PI * 1e6 * time + 1.4);
-	Ez[500 * width + 530] += sin(2 * M_PI * 1e6 * time + 1.5);
-	Ez[500 * width + 535] += sin(2 * M_PI * 1e6 * time + 1.6);
-	Ez[500 * width + 540] += sin(2 * M_PI * 1e6 * time + 1.7);
+	Ez[500 * width + 460] += sin(omega * *time + (1 * phi));
+	Ez[500 * width + 465] += sin(omega * *time + (2 * phi));
+	Ez[500 * width + 470] += sin(omega * *time + (3 * phi));
+	Ez[500 * width + 475] += sin(omega * *time + (4 * phi));
+	Ez[500 * width + 480] += sin(omega * *time + (5 * phi));
+	Ez[500 * width + 485] += sin(omega * *time + (6 * phi));
+	Ez[500 * width + 490] += sin(omega * *time + (7 * phi));
+	Ez[500 * width + 495] += sin(omega * *time + (8 * phi));
+	Ez[500 * width + 500] += sin(omega * *time + (9 * phi));
+	Ez[500 * width + 505] += sin(omega * *time + (10 * phi));
+	Ez[500 * width + 510] += sin(omega * *time + (11 * phi));
+	Ez[500 * width + 515] += sin(omega * *time + (12 * phi));
+	Ez[500 * width + 520] += sin(omega * *time + (13 * phi));
+	Ez[500 * width + 525] += sin(omega * *time + (14 * phi));
+	Ez[500 * width + 530] += sin(omega * *time + (15 * phi));
+	Ez[500 * width + 535] += sin(omega * *time + (16 * phi));
+	Ez[500 * width + 540] += sin(omega * *time + (17 * phi));
 
 //	Ez[sourceY * width + sourceX + 100] += sin(omega * time);
 
@@ -118,7 +121,7 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height,
 }
 
 void updateImage(float* Ez, float* Hx, float* Hy, 
-		int width, int height, float time) {
+		int width, int height, float* time) {
 	updateFields(Ez, Hx, Hy, width, height, time);	
 	
 	printf("%f\n", Ez[512 * width + 512]);
@@ -208,8 +211,8 @@ int main(void) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	float time = 0.0f;
-	float dt = DT;
+	float* time = (float*)malloc(sizeof(float));
+	*time = 0.0f;
 	while (!glfwWindowShouldClose(window)) {
 		updateImage(Ez, Hx, Hy, width, height, time);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -227,8 +230,6 @@ int main(void) {
 		glfwSwapBuffers(window);
 
 		glfwPollEvents();
-		
-		time += dt;
 	}
 
 	free(Ez);
