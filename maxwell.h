@@ -18,6 +18,10 @@
 #define MX_MAX_SRC_ARGS 10
 #define MX_SIMFILE_MAX_LINEL 256
 #define MX_SIMDEF_NSEC 2
+#define MX_MAX_SOURCES 1000
+#define MX_FC_STRL 10
+
+#define MX_SRC_ARGC_SINELINFREQ 4
 
 typedef struct {
 	float* Ex;
@@ -35,6 +39,7 @@ typedef struct {
 	float dt;
 	float dx;
 	float dy;
+	int sourcec;
 } Simulation ;
 
 typedef enum {

@@ -2,6 +2,7 @@
 
 bool sim_running = true;
 bool reset_sim = false;
+float time_dir = 1;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		int mods) {
@@ -49,11 +50,11 @@ float gaussianPulse(float t, float t0, float spread) {
 	return exp(-pow(t / (t0 * spread), 2));
 }
 
-void updateFields(Field* field, Simulation* simulation) {
+void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	const float eps = 8.854e-12;
 	const float mu = 1.2566e-6;
 
-	simulation->time += simulation->dt;
+	simulation->time += time_dir * simulation->dt;
 
 	float t0 = 1e-9;
 	float spread = 1e-2;
@@ -63,7 +64,34 @@ void updateFields(Field* field, Simulation* simulation) {
 	float frequency = 1.5e6;
 	float omega = 2 * M_PI * frequency;
 
-	field->Ez[500 * simulation->width + 460] += sin(omega * simulation->time);
+	// Add sources
+	for (int i = 0; i < simulation->sourcec; i++) {
+		float sourceVal = 0.0f;
+		switch (sources[i].fxn) {
+			case SINELINFREQ:
+				sourceVal = sin(2 * M_PI * sources[i].argv[2].value.floatVal 
+						* simulation->time 
+						+ sources[i].argv[3].value.floatVal);
+				int index = simulation->height * sources[i].argv[1].value.intVal
+						+ sources[i].argv[0].value.intVal;
+				switch (sources[i].fc) {
+					case FC_EZ:
+						field->Ez[index] += time_dir * sourceVal;
+						break;
+					case FC_HX:
+						field->Hx[index] += time_dir * sourceVal;
+						break;
+					case FC_HY:
+						field->Hy[index] += time_dir * sourceVal;
+						break;
+					default:
+						break;
+				}
+				break;
+			default:
+				break;
+		}
+	}
 
 	// Update H field
 	for (int j = 0; j < simulation->height - 1; j++) {
@@ -107,8 +135,8 @@ void updateFields(Field* field, Simulation* simulation) {
     }
 }
 
-void updateImage(Field* field, Simulation* simulation) {
-	updateFields(field, simulation);	
+void updateImage(Field* field, Simulation* simulation, Source* sources) {
+	updateFields(field, simulation, sources);	
 	
 	printf("%f\n", field->Ez[512 * simulation->width + 512]);
 	float* visualData = (float*)malloc(3 * simulation->width * simulation->height * sizeof(float));
@@ -162,8 +190,8 @@ void updateImage(Field* field, Simulation* simulation) {
 	}
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, simulation->width, simulation->height, 0, GL_RGB, GL_FLOAT, 
-			visualData);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, simulation->width, 
+			simulation->height, 0, GL_RGB, GL_FLOAT, visualData);
 	free(visualData);
 }
 
@@ -175,13 +203,22 @@ int main(int argc, char** argv) {
 		exit(EXIT_FAILURE);
 	}
 
+	// Initialize the simulation parameter data structure
+	Simulation simulation;
+	simulation.width = -1;
+	simulation.height = -1;
+	simulation.time = 0.0f;
+	simulation.dx = 1e1;
+	simulation.dy = 1e1;
+	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
+			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
+	simulation.sourcec = 0;	
+
 	// Open the file for parsing
-	
 	const int nsections = MX_SIMDEF_NSEC;
 	const char* sections[] = {"[Simulation]", "[Sources]"};
 
-	int width = -1;
-	int height = -1;
+	Source sources[MX_MAX_SOURCES];  
 
 	for (int s = 0; s < nsections; s++) {
 		FILE* sim_file = fopen(argv[1], "r");
@@ -211,14 +248,14 @@ int main(int argc, char** argv) {
 							exit(EXIT_FAILURE);
 						}
 						if (strcmp(key, "Width") == 0) {
-							if (sscanf(ROL, "%d", &width) != 1) {
+							if (sscanf(ROL, "%d", &simulation.width) != 1) {
 								fprintf(stderr, "Error: Invalid format for "
 										"Simulation.Width\n");
 								fclose(sim_file);
 								exit(EXIT_FAILURE);
 							}
 						} else if (strcmp(key, "Height") == 0) {
-							if (sscanf(ROL, "%d", &height) != 1) {
+							if (sscanf(ROL, "%d", &simulation.height) != 1) {
 								fprintf(stderr, "Error: Invalid format for "
 										"Simulation.Height\n");
 								fclose(sim_file);
@@ -229,7 +266,55 @@ int main(int argc, char** argv) {
 									"Simulation.%s - ignoring\n", key);
 						}
 					} else if (sections[s] == "[Sources]") {
-
+						char key[MX_SIMFILE_MAX_LINEL];
+						char ROL[MX_SIMFILE_MAX_LINEL];
+						if (sscanf(line, "%255s %[^\n]", key, ROL) < 1) {
+							fprintf(stderr, "Error: Invalid simulation\n");
+							fclose(sim_file);
+							exit(EXIT_FAILURE);
+						}	
+						if (strcmp(key, "SineLinFreq") == 0) {
+							char fc_str[MX_FC_STRL]; 
+							Source source;
+							source.fxn = SINELINFREQ;
+							source.argc = MX_SRC_ARGC_SINELINFREQ ;
+							source.argv[0].type = TYPE_INT;
+							source.argv[1].type = TYPE_INT;
+							source.argv[2].type = TYPE_FLOAT; 
+							source.argv[3].type = TYPE_FLOAT;
+							int x, y;
+							float f, phi;
+							if (sscanf(ROL, "%s %d %d %f %f", fc_str, 
+									&x, &y, &f, &phi) != 1 
+									+ MX_SRC_ARGC_SINELINFREQ) {
+								fprintf(stderr, "Error: Invalid format for "
+										"Source #%d: SineLinFreq\n", 
+										simulation.sourcec);
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+							if (strcmp(fc_str, "Ez") == 0) {
+								source.fc = FC_EZ;
+							} else if (strcmp(fc_str, "Hx") == 0) {
+								source.fc = FC_HX;
+							} else if (strcmp(fc_str, "Hy") == 0) {
+								source.fc = FC_HY;
+							} else {
+								fprintf(stderr, "Warning: Unknown field "
+										"component for Source #%d - "
+										"defaulting to Ez\n", 
+										simulation.sourcec);
+								source.fc = FC_EZ;
+								
+							}
+							source.argv[0].value.intVal = x;
+							source.argv[1].value.intVal = y;
+							source.argv[2].value.floatVal = f;
+							source.argv[3].value.floatVal = phi;
+							
+							sources[simulation.sourcec] = source;
+							simulation.sourcec++;
+						}
 					} else {
 						fprintf(stderr, "Unknown configuation section\n"); 
 					}
@@ -250,7 +335,8 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	window = glfwCreateWindow(width, height, "Example", NULL, NULL);
+	window = glfwCreateWindow(simulation.width, simulation.height, "Example", 
+			NULL, NULL);
 	if (!window) {
 		fprintf(stderr, "Failed to create glfw window\n");
 		glfwTerminate();
@@ -259,19 +345,14 @@ int main(int argc, char** argv) {
 	glfwMakeContextCurrent(window);
 	glfwSetKeyCallback(window, key_callback);
 
-	Simulation simulation;
-	simulation.width = width;
-	simulation.height = height;
-	simulation.time = 0.0f;
-	simulation.dx = 1e1;
-	simulation.dy = 1e1;
-	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
-			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
 
 	Field field;
-	float* Ez = (float*)malloc(width * height * sizeof(float));
-	float* Hx = (float*)malloc(width * height * sizeof(float));
-	float* Hy = (float*)malloc(width * height * sizeof(float));
+	float* Ez = (float*)malloc(simulation.width * simulation.height 
+			* sizeof(float));
+	float* Hx = (float*)malloc(simulation.width * simulation.height 
+			* sizeof(float));
+	float* Hy = (float*)malloc(simulation.width * simulation.height 
+			* sizeof(float));
 	field.Ez = Ez;
 	field.Hx = Hx;
 	field.Hy = Hy;
@@ -285,16 +366,14 @@ int main(int argc, char** argv) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	float time = 0.0f;
-		
 	while (!glfwWindowShouldClose(window)) {
 		if (reset_sim) {
 			initFields(&field, &simulation);
-			time = 0.0f;
-			updateImage(&field, &simulation);
+			simulation.time = 0.0f;
+			updateImage(&field, &simulation, sources);
 			reset_sim = false;
 		}
-		if (sim_running) updateImage(&field, &simulation);
+		if (sim_running) updateImage(&field, &simulation, sources);
 		
 		glClear(GL_COLOR_BUFFER_BIT);
 		
