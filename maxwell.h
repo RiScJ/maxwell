@@ -9,7 +9,7 @@
 #include <math.h>
 
 #define DT 1e-2
-#define MAX_FIELD 1e3
+#define MAX_FIELD 1e1
 #define MIN_FIELD 0
 #define SPEED_OF_LIGHT 299792458.0
 #define MX_DT_SCALE 0.9
@@ -18,6 +18,24 @@
 #define MX_MAX_SRC_ARGS 10
 #define MX_SIMFILE_MAX_LINEL 256
 #define MX_SIMDEF_NSEC 2
+
+typedef struct {
+	float* Ex;
+	float* Ey;
+	float* Ez;
+	float* Hx;
+	float* Hy;
+	float* Hz;
+} Field;
+
+typedef struct {
+	int width;
+	int height;
+	float time;
+	float dt;
+	float dx;
+	float dy;
+} Simulation ;
 
 typedef enum {
 	TYPE_INT,
