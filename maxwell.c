@@ -1,12 +1,23 @@
-#include <GLFW/glfw3.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
+#include "maxwell.h"
 
-#define DT 1e-2
-#define MAX_FIELD 1e3
-#define MIN_FIELD 0
-#define SPEED_OF_LIGHT 299792458.0
+bool sim_running = true;
+
+void key_callback(GLFWwindow* window, int key, int scancode, int action, 
+		int mods) {
+	if (key == GLFW_KEY_C && mods == GLFW_MOD_CONTROL && (action == GLFW_PRESS 
+			|| action == GLFW_REPEAT)) {
+		printf("Caught interrupt - exiting...\n");
+		glfwSetWindowShouldClose(window, GLFW_TRUE);
+	}
+	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
+		if (sim_running) {
+			printf("Pausing simulation.\n");
+		} else {
+			printf("Resuming simulation.\n");
+		}
+		sim_running = !sim_running;
+	}
+}
 
 void initFields(float* Ez, float* Hx, float* Hy, int width, int height) {
 	int index;
@@ -38,7 +49,8 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height,
 	const float dy = 1e1;
 	const float eps = 8.854e-12;
 	const float mu = 1.2566e-6;
-	const float dt = 0.9e0 / (SPEED_OF_LIGHT * sqrt(1 / (dx * dx) + 1 / (dy * dy)));
+	const float dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (dx * dx) 
+			+ 1 / (dy * dy)));
 
 	*time += dt;
 
@@ -52,7 +64,7 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height,
 
 //	Ez[sourceY * width + sourceX] += gaussianPulse(time, t0, spread);
 
-	float phi = sin(*time * 1e4);
+	float phi = sin(*time * 1e5);
 
 	Ez[500 * width + 460] += sin(omega * *time + (1 * phi));
 	Ez[500 * width + 465] += sin(omega * *time + (2 * phi));
@@ -74,6 +86,7 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height,
 
 //	Ez[sourceY * width + sourceX + 100] += sin(omega * time);
 
+	// Update H field
 	for (int j = 0; j < height - 1; j++) {
 		for (int i = 0; i < width; i++) {
 			int index = j * width + i;
@@ -85,27 +98,16 @@ void updateFields(float* Ez, float* Hx, float* Hy, int width, int height,
 			}
 		}
 	}
-/*
-	for (int j = 1; j < height; j++) {
-		for (int i = 1; i < width; i++) {
-			int index = j * width + i;
-			Ez[index] += dt / eps * ((Hy[index] - Hy[index - 1]) / dx - (Hx[index] - Hx[index - width]) / dy);
-		}
-	}
-
-	for (int j = 0; j < height - 1; j++) {
-        for (int i = 0; i < width - 1; i++) {
-            Hx[j * width + i] += (dt / mu) * (Ez[j * width + i + 1] - Ez[j * width + i]) / dy;
-            Hy[j * width + i] += (dt / mu) * (Ez[(j + 1) * width + i] - Ez[j * width + i]) / dx;
-        }
-   	}
-*/
-   	// Update E field
+   	
+	// Update E field
     for (int j = 1; j < height - 1; j++) {
        	for (int i = 1; i < width - 1; i++) {
-       	    Ez[j * width + i] += (dt / eps) * ((Hy[j * width + i] - Hy[j * width + i - 1]) / dx - (Hx[j * width + i] - Hx[(j - 1) * width + i]) / dy);
+       	    Ez[j * width + i] += (dt / eps) * ((Hy[j * width + i] 
+					- Hy[j * width + i - 1]) / dx - (Hx[j * width + i] 
+					- Hx[(j - 1) * width + i]) / dy);
        	}
    	}
+
     // Apply PEC boundary conditions: E field is zero at all boundaries
     // Top and bottom boundaries
     for (int i = 0; i < width; i++) {
@@ -180,11 +182,83 @@ void updateImage(float* Ez, float* Hx, float* Hy,
 	free(visualData);
 }
 
-int main(void) {
+int main(int argc, char** argv) {
+	// Ensure a simulation description file has been provided
+	if (argc != 2) {
+		fprintf(stderr, "Invalid number of arguments.\n");
+		fprintf(stderr, "Usage: %s sim_file\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	// Open the file for parsing
+	
+	const int nsections = MX_SIMDEF_NSEC;
+	const char* sections[] = {"[Simulation]", "[Sources]"};
+
+	int width = -1;
+	int height = -1;
+
+	for (int s = 0; s < nsections; s++) {
+		FILE* sim_file = fopen(argv[1], "r");
+		if (sim_file == NULL) {
+			fprintf(stderr, "Error opening file at %s.\n", argv[1]);
+			exit(EXIT_FAILURE);
+		}
+		
+		char line[MX_SIMFILE_MAX_LINEL]; 
+		enum { SEARCH, READ, DONE } state = SEARCH;
+
+		while (fgets(line, sizeof(line), sim_file) && state != DONE) {
+			line[strcspn(line, "\n")] = 0;
+			if (state == SEARCH) {
+				if (strcmp(line, sections[s]) == 0) state = READ;
+			} else if (state == READ) {
+				if (line[0] == '[' && line[strlen(line) - 1] == ']') {
+					state = DONE;
+				} else {
+					if (strcmp(line, "") == 0) continue;
+					if (sections[s] == "[Simulation]") {
+						char key[MX_SIMFILE_MAX_LINEL];
+						char ROL[MX_SIMFILE_MAX_LINEL];
+						if (sscanf(line, "%255s %[^\n]", key, ROL) < 1) {
+							fprintf(stderr, "Error: Invalid simulation\n");
+							fclose(sim_file);
+							exit(EXIT_FAILURE);
+						}
+						if (strcmp(key, "Width") == 0) {
+							if (sscanf(ROL, "%d", &width) != 1) {
+								fprintf(stderr, "Error: Invalid format for "
+										"Simulation.Width\n");
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+						} else if (strcmp(key, "Height") == 0) {
+							if (sscanf(ROL, "%d", &height) != 1) {
+								fprintf(stderr, "Error: Invalid format for "
+										"Simulation.Height\n");
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+						} else {
+							fprintf(stderr, "Warning: Unknown key: "
+									"Simulation.%s - ignoring\n", key);
+						}
+					} else if (sections[s] == "[Sources]") {
+
+					} else {
+						fprintf(stderr, "Unknown configuation section\n"); 
+					}
+				}
+			}
+		}	
+	
+		fclose(sim_file);
+	}
+
+	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);
 
 	GLFWwindow* window;
-	const int width = 1024, height = 1024;
 	
 	if (!glfwInit()) {
 		fprintf(stderr, "Failed to initialize glfw\n");
@@ -198,6 +272,7 @@ int main(void) {
 		return -1;
 	}
 	glfwMakeContextCurrent(window);
+	glfwSetKeyCallback(window, key_callback);
 
 	float* Ez = (float*)malloc(width * height * sizeof(float));
 	float* Hx = (float*)malloc(width * height * sizeof(float));
@@ -213,8 +288,9 @@ int main(void) {
 
 	float* time = (float*)malloc(sizeof(float));
 	*time = 0.0f;
+
 	while (!glfwWindowShouldClose(window)) {
-		updateImage(Ez, Hx, Hy, width, height, time);
+		if (sim_running) updateImage(Ez, Hx, Hy, width, height, time);
 		glClear(GL_COLOR_BUFFER_BIT);
 		
 		glEnable(GL_TEXTURE_2D);
@@ -232,9 +308,14 @@ int main(void) {
 		glfwPollEvents();
 	}
 
+	glfwDestroyWindow(window);
+	glfwTerminate();
+
 	free(Ez);
 	free(Hx);
 	free(Hy);
-	glfwTerminate();
-	return 0;
+   
+	printf("Goodbye!\n");
+		
+	exit(EXIT_SUCCESS);
 }
