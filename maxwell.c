@@ -1,6 +1,7 @@
 #include "maxwell.h"
 
 bool sim_running = true;
+bool reset_sim = false;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		int mods) {
@@ -16,6 +17,11 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action,
 			printf("Resuming simulation.\n");
 		}
 		sim_running = !sim_running;
+	}
+	if (key == GLFW_KEY_R && action == GLFW_PRESS) {
+		printf("Resetting simulation.\n");
+		sim_running = false;
+		reset_sim = true;
 	}
 }
 
@@ -290,6 +296,12 @@ int main(int argc, char** argv) {
 	*time = 0.0f;
 
 	while (!glfwWindowShouldClose(window)) {
+		if (reset_sim) {
+			initFields(Ez, Hx, Hy, width, height);
+			*time = 0.0f;
+			updateImage(Ez, Hx, Hy, width, height, time);
+			reset_sim = false;
+		}
 		if (sim_running) updateImage(Ez, Hx, Hy, width, height, time);
 		glClear(GL_COLOR_BUFFER_BIT);
 		
