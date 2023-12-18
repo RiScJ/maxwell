@@ -182,6 +182,7 @@ void updateImage(float* Ez, float* Hx, float* Hy,
 			//visualData[3 * index + 2] = (log10(hyVal) - logMin) / (logMax - logMin);
 		}
 	}
+
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_FLOAT, 
 			visualData);
@@ -292,17 +293,17 @@ int main(int argc, char** argv) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
-	float* time = (float*)malloc(sizeof(float));
-	*time = 0.0f;
-
+	float time = 0.0f;
+		
 	while (!glfwWindowShouldClose(window)) {
 		if (reset_sim) {
 			initFields(Ez, Hx, Hy, width, height);
-			*time = 0.0f;
-			updateImage(Ez, Hx, Hy, width, height, time);
+			time = 0.0f;
+			updateImage(Ez, Hx, Hy, width, height, &time);
 			reset_sim = false;
 		}
-		if (sim_running) updateImage(Ez, Hx, Hy, width, height, time);
+		if (sim_running) updateImage(Ez, Hx, Hy, width, height, &time);
+		
 		glClear(GL_COLOR_BUFFER_BIT);
 		
 		glEnable(GL_TEXTURE_2D);
@@ -326,7 +327,7 @@ int main(int argc, char** argv) {
 	free(Ez);
 	free(Hx);
 	free(Hy);
-   
+
 	printf("Goodbye!\n");
 		
 	exit(EXIT_SUCCESS);
