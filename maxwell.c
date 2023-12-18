@@ -2,7 +2,6 @@
 
 bool sim_running = true;
 bool reset_sim = false;
-float time_dir = 1;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		int mods) {
@@ -54,15 +53,7 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	const float eps = 8.854e-12;
 	const float mu = 1.2566e-6;
 
-	simulation->time += time_dir * simulation->dt;
-
-	float t0 = 1e-9;
-	float spread = 1e-2;
-	int sourceX = simulation->width / 2;
-	int sourceY = simulation->height / 2;
-
-	float frequency = 1.5e6;
-	float omega = 2 * M_PI * frequency;
+	simulation->time += simulation->dt;
 
 	// Add sources
 	for (int i = 0; i < simulation->sourcec; i++) {
@@ -76,13 +67,13 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 						+ sources[i].argv[0].value.intVal;
 				switch (sources[i].fc) {
 					case FC_EZ:
-						field->Ez[index] += time_dir * sourceVal;
+						field->Ez[index] += sourceVal;
 						break;
 					case FC_HX:
-						field->Hx[index] += time_dir * sourceVal;
+						field->Hx[index] += sourceVal;
 						break;
 					case FC_HY:
-						field->Hy[index] += time_dir * sourceVal;
+						field->Hy[index] += sourceVal;
 						break;
 					default:
 						break;
@@ -98,12 +89,14 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 		for (int i = 0; i < simulation->width; i++) {
 			int index = j * simulation->width + i;
 			if (i < simulation->width - 1) {
-				field->Hx[index] -= simulation->dt / (mu * simulation->dy) 
+				field->Hx[index] -= simulation->dt 
+						/ (mu * simulation->dy) 
 						* (field->Ez[index + simulation->width] 
 						- field->Ez[index]);
 			}
 			if (j < simulation->height - 1) {
-				field->Hy[index] += simulation->dt / (mu * simulation->dx) 
+				field->Hy[index] += simulation->dt 
+						/ (mu * simulation->dx) 
 						* (field->Ez[index + 1] - field->Ez[index]);
 			}
 		}
@@ -131,7 +124,7 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
     // Left and right boundaries
     for (int j = 0; j < simulation->height; j++) {
         field->Ez[j * simulation->width] = 0; // Left boundary
-        field->Ez[j * simulation->width + (simulation->width - 1)] = 0; // Right boundary
+        field->Ez[j * simulation->width + (simulation->width - 1)] = 0; 
     }
 }
 
@@ -139,10 +132,11 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 	updateFields(field, simulation, sources);	
 	
 	printf("%f\n", field->Ez[512 * simulation->width + 512]);
-	float* visualData = (float*)malloc(3 * simulation->width * simulation->height * sizeof(float));
+	float* visualData = (float*)malloc(3 * simulation->width 
+			* simulation->height * sizeof(float));
 	int index;
 
-	float logMax = log10(MAX_FIELD);
+	float logMax = log10(MAX_FIELD) - 6;
 	float logMin = log10(MIN_FIELD);
 
 	float ezMin, hxMin, hyMin;
@@ -172,16 +166,16 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 		
 			
 			visualData[3 * index + 2] = (ezVal - ezMin) / (ezMax - ezMin);
-			visualData[3 * index + 1] = (ezVal - ezMin) / (ezMax - ezMin);
+			visualData[3 * index + 1] = (hyVal - hyMin) / (hyMax - hyMin);
 			visualData[3 * index] = (hxVal - hxMin) / (hxMax - hxMin);
 			
 			//visualData[3 * index + 2] = (hyVal*hyVal - hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
 			//visualData[3 * index] = (hxVal*hxVal - hxMin*hxMin) / (hxMax*hxMax - hxMin*hxMin);
 			//visualData[3 * index + 2] = (hyVal*hyVal - hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
 			
-			//visualData[3 * index] = (ezVal*ezVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
-			//visualData[3 * index + 1] = (hxVal*hxVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
-			//visualData[3 * index + 2] = (hyVal*hyVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD); 
+			visualData[3 * index] = (ezVal*ezVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
+			visualData[3 * index + 1] = (hxVal*hxVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
+			visualData[3 * index + 2] = (hyVal*hyVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD); 
 			
 			//visualData[3 * index] = (log10(ezVal) - logMin) / (logMax - logMin);
 			//visualData[3 * index + 1] = (log10(hxVal) - logMin) / (logMax - logMin);
@@ -324,7 +318,6 @@ int main(int argc, char** argv) {
 	
 		fclose(sim_file);
 	}
-
 	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);
 
@@ -335,7 +328,7 @@ int main(int argc, char** argv) {
 		return -1;
 	}
 
-	window = glfwCreateWindow(simulation.width, simulation.height, "Example", 
+	window = glfwCreateWindow(simulation.width, simulation.height, "Maxwell", 
 			NULL, NULL);
 	if (!window) {
 		fprintf(stderr, "Failed to create glfw window\n");

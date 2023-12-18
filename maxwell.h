@@ -9,7 +9,7 @@
 #include <math.h>
 
 #define DT 1e-2
-#define MAX_FIELD 1e1
+#define MAX_FIELD 1e2
 #define MIN_FIELD 0
 #define SPEED_OF_LIGHT 299792458.0
 #define MX_DT_SCALE 0.9
