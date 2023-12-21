@@ -2,6 +2,7 @@
 
 bool sim_running = true;
 bool reset_sim = false;
+bool cycle_vis = false;
 
 void key_callback(GLFWwindow* window, int key, int scancode, int action, 
 		int mods) {
@@ -22,6 +23,10 @@ void key_callback(GLFWwindow* window, int key, int scancode, int action,
 		printf("Resetting simulation.\n");
 		sim_running = false;
 		reset_sim = true;
+	}
+	if (key == GLFW_KEY_V && action == GLFW_PRESS) {
+		printf("Advancing to next visualization function.\n");
+		cycle_vis = true;
 	}
 }
 
@@ -163,23 +168,43 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 			float ezVal = field->Ez[index];
 			float hxVal = field->Hx[index];
 			float hyVal = field->Hy[index];
-		
-			
-			visualData[3 * index + 2] = (ezVal - ezMin) / (ezMax - ezMin);
-			visualData[3 * index + 1] = (hyVal - hyMin) / (hyMax - hyMin);
-			visualData[3 * index] = (hxVal - hxMin) / (hxMax - hxMin);
-			
-			//visualData[3 * index + 2] = (hyVal*hyVal - hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
-			//visualData[3 * index] = (hxVal*hxVal - hxMin*hxMin) / (hxMax*hxMax - hxMin*hxMin);
-			//visualData[3 * index + 2] = (hyVal*hyVal - hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
-			
-			visualData[3 * index] = (ezVal*ezVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
-			visualData[3 * index + 1] = (hxVal*hxVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
-			visualData[3 * index + 2] = (hyVal*hyVal - MIN_FIELD) / (MAX_FIELD - MIN_FIELD); 
-			
-			//visualData[3 * index] = (log10(ezVal) - logMin) / (logMax - logMin);
-			//visualData[3 * index + 1] = (log10(hxVal) - logMin) / (logMax - logMin);
-			//visualData[3 * index + 2] = (log10(hyVal) - logMin) / (logMax - logMin);
+	
+			switch (simulation->vis_fxn) {		
+				case VIS_TE_LIN_RGB:
+					visualData[3 * index + 2] = (ezVal - ezMin) 
+							/ (ezMax - ezMin);
+					visualData[3 * index + 1] = (hyVal - hyMin) 
+							/ (hyMax - hyMin);
+					visualData[3 * index] = (hxVal - hxMin) 
+							/ (hxMax - hxMin);
+					break;
+				case VIS_TE_SQR_RGB:
+					visualData[3 * index + 1] = (hyVal*hyVal - hyMin*hyMin) 
+							/ (hyMax*hyMax - hyMin*hyMin); 
+					visualData[3 * index] = (hxVal*hxVal - hxMin*hxMin) 
+							/ (hxMax*hxMax - hxMin*hxMin);
+					visualData[3 * index + 2] = (ezVal*ezVal - ezMin*ezMin) 
+							/ (ezMax*ezMax - ezMin*ezMin); 
+					break;				
+				case VIS_TE_SQR2_RGB:
+					visualData[3 * index] = (ezVal*ezVal - MIN_FIELD) 
+							/ (MAX_FIELD - MIN_FIELD);
+					visualData[3 * index + 1] = (hxVal*hxVal - MIN_FIELD) 
+							/ (MAX_FIELD - MIN_FIELD);
+					visualData[3 * index + 2] = (hyVal*hyVal - MIN_FIELD) 
+							/ (MAX_FIELD - MIN_FIELD); 
+					break;
+				case VIS_TE_LOG_RGB:
+					visualData[3 * index] = (log10(ezVal) - logMin) 
+							/ (logMax - logMin);
+					visualData[3 * index + 1] = (log10(hxVal) - logMin) 
+							/ (logMax - logMin);
+					visualData[3 * index + 2] = (log10(hyVal) - logMin) 
+							/ (logMax - logMin);
+					break;
+				default:
+					break;
+			}
 		}
 	}
 
@@ -207,6 +232,7 @@ int main(int argc, char** argv) {
 	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
 			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
 	simulation.sourcec = 0;	
+	simulation.vis_fxn = VIS_TE_SQR2_RGB;
 
 	// Open the file for parsing
 	const int nsections = MX_SIMDEF_NSEC;
@@ -360,6 +386,11 @@ int main(int argc, char** argv) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 	while (!glfwWindowShouldClose(window)) {
+		if (cycle_vis) {
+			simulation.vis_fxn++;
+			if (simulation.vis_fxn == VIS_MAX) simulation.vis_fxn = 0;
+			cycle_vis = false;
+		}
 		if (reset_sim) {
 			initFields(&field, &simulation);
 			simulation.time = 0.0f;

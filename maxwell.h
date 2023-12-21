@@ -23,6 +23,14 @@
 
 #define MX_SRC_ARGC_SINELINFREQ 4
 
+typedef enum {
+	VIS_TE_LIN_RGB = 0,
+	VIS_TE_SQR_RGB,
+	VIS_TE_SQR2_RGB,
+	VIS_TE_LOG_RGB,
+	VIS_MAX
+} VisualizationFunction;
+
 typedef struct {
 	float* Ex;
 	float* Ey;
@@ -40,6 +48,7 @@ typedef struct {
 	float dx;
 	float dy;
 	int sourcec;
+	VisualizationFunction vis_fxn;
 } Simulation ;
 
 typedef enum {
