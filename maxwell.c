@@ -209,7 +209,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			Material* materials) {
 	updateFields(field, simulation, sources);	
 	
-	printf("%f\n", field->Ez[512 * simulation->width + 512]);
+	//printf("%f\n", field->Ez[512 * simulation->width + 512]);
 	float* visualData = (float*)malloc(3 * simulation->width 
 			* simulation->height * sizeof(float));
 	int index;
@@ -333,6 +333,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 
 					int index;
 					float d1, d2, d3;
+					float L, R, G, B;
 					for (int y = 0; y < simulation->height; y++) {
 						for (int x = 0; x < simulation->width; x++) {
 							index = y * simulation->width + x;
@@ -353,9 +354,19 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 								|| (d3 < MX_MAT_BOUNDARY_PX
 									&& !(x < L3x1 || x > L3x2 || y < L3y1 
 									|| y > L3y2))) {
-								visualData[3 * index] = 0;
-								visualData[3 * index + 1] = 0;
-								visualData[3 * index + 2] = 0;
+								R = visualData[3 * index];
+								G = visualData[3 * index + 1];
+								B = visualData[3 * index + 2];
+								L = (R + G + B) / 3;
+								if (L > 0.5) {
+									visualData[3 * index] = 0;
+									visualData[3 * index + 1] = 0;
+									visualData[3 * index + 2] = 0;
+								} else {	
+									visualData[3 * index] = 1;
+									visualData[3 * index + 1] = 1;
+									visualData[3 * index + 2] = 1;
+								}
 							} 
 						}
 					} 
