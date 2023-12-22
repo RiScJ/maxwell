@@ -8,10 +8,13 @@
 #include <string.h>
 #include <math.h>
 
+#define SPEED_OF_LIGHT 299792458.0
+#define VACUUM_PERMITTIVITY 8.854e-12
+#define VACUUM_PERMEABILITY 1.2566e-6
+
 #define DT 1e-2
 #define MAX_FIELD 1e2
 #define MIN_FIELD 0
-#define SPEED_OF_LIGHT 299792458.0
 #define MX_DT_SCALE 0.9
 
 #define MX_STRING_ARGL 255
@@ -25,6 +28,7 @@
 
 typedef enum {
 	VIS_TE_LIN_RGB = 0,
+	VIS_TE_LIN_EZ_RGB,
 	VIS_TE_SQR_RGB,
 	VIS_TE_SQR2_RGB,
 	VIS_TE_LOG_RGB,
@@ -32,6 +36,8 @@ typedef enum {
 } VisualizationFunction;
 
 typedef struct {
+	float* Epsilon;
+	float* Mu;
 	float* Ex;
 	float* Ey;
 	float* Ez;

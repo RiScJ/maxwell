@@ -35,9 +35,14 @@ void initFields(Field* field, Simulation* simulation) {
 	for (int y = 0; y < simulation->height; ++y) {
 		for (int x = 0; x < simulation->width; ++x) {
 			index = y * simulation->width + x;
+			field->Epsilon[index] = VACUUM_PERMITTIVITY;
+			field->Mu[index] = VACUUM_PERMEABILITY;
+			field->Ex[index] = 0;
+			field->Ey[index] = 0;
 			field->Ez[index] = 0;
 			field->Hx[index] = 0;
 			field->Hy[index] = 0;
+			field->Hz[index] = 0;
 		}
 	}
 }
@@ -178,6 +183,14 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 					visualData[3 * index] = (hxVal - hxMin) 
 							/ (hxMax - hxMin);
 					break;
+				case VIS_TE_LIN_EZ_RGB:
+					float normVal = (ezVal - ezMin) / (ezMax - ezMin);
+					visualData[3 * index + 2] = normVal < 0.5 ? 2 * normVal : 1.0;
+					visualData[3 * index + 0] = normVal < 0.5 ? 2 * normVal 
+							: 2 * (1 - normVal);
+					visualData[3 * index + 1] = normVal > 0.5 ? 2 
+							* (normVal - 0.5) : 0.0;
+					break;
 				case VIS_TE_SQR_RGB:
 					visualData[3 * index + 1] = (hyVal*hyVal - hyMin*hyMin) 
 							/ (hyMax*hyMax - hyMin*hyMin); 
@@ -297,7 +310,7 @@ int main(int argc, char** argv) {
 							char fc_str[MX_FC_STRL]; 
 							Source source;
 							source.fxn = SINELINFREQ;
-							source.argc = MX_SRC_ARGC_SINELINFREQ ;
+							source.argc = MX_SRC_ARGC_SINELINFREQ;
 							source.argv[0].type = TYPE_INT;
 							source.argv[1].type = TYPE_INT;
 							source.argv[2].type = TYPE_FLOAT; 
@@ -366,15 +379,31 @@ int main(int argc, char** argv) {
 
 
 	Field field;
+	float* Epsilon = (float*)malloc(simulation.width * simulation.height
+			* sizeof(float));
+	float* Mu = (float*)malloc(simulation.width * simulation.height
+			* sizeof(float));
+	float* Ex = (float*)malloc(simulation.width * simulation.height 
+			* sizeof(float));
+	float* Ey = (float*)malloc(simulation.width * simulation.height
+			* sizeof(float));
 	float* Ez = (float*)malloc(simulation.width * simulation.height 
 			* sizeof(float));
 	float* Hx = (float*)malloc(simulation.width * simulation.height 
 			* sizeof(float));
 	float* Hy = (float*)malloc(simulation.width * simulation.height 
 			* sizeof(float));
+	float* Hz = (float*)malloc(simulation.width * simulation.height
+			* sizeof(float));
+
+	field.Epsilon = Epsilon;
+	field.Mu = Mu;
+	field.Ex = Ex;
+	field.Ey = Ey;
 	field.Ez = Ez;
 	field.Hx = Hx;
 	field.Hy = Hy;
+	field.Hz = Hz;
 
 	initFields(&field, &simulation);
 
