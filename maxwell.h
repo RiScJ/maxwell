@@ -17,10 +17,14 @@
 #define MIN_FIELD 0
 #define MX_DT_SCALE 0.9
 
+#define MX_MAX_MATERIALS 1000
+#define MX_MAX_MAT_ARGS 10
+#define MX_MAT_ARGC_TRIANGLE 8
+
 #define MX_STRING_ARGL 255
 #define MX_MAX_SRC_ARGS 10
 #define MX_SIMFILE_MAX_LINEL 256
-#define MX_SIMDEF_NSEC 2
+#define MX_SIMDEF_NSEC 3
 #define MX_MAX_SOURCES 1000
 #define MX_FC_STRL 10
 
@@ -54,6 +58,7 @@ typedef struct {
 	float dx;
 	float dy;
 	int sourcec;
+	int materialc;
 	VisualizationFunction vis_fxn;
 } Simulation ;
 
@@ -81,6 +86,8 @@ typedef enum {
 } SourceFunction;
 
 typedef enum {
+	FC_EPS,
+	FC_MU,
 	FC_EX,
 	FC_EY,
 	FC_EZ,
@@ -95,5 +102,18 @@ typedef struct {
 	int argc;
 	Argument argv[MX_MAX_SRC_ARGS];
 } Source;
+
+typedef enum {
+	MG_UNKNOWN,
+	MG_TRIANGLE
+} MaterialGeometry;
+
+typedef struct {
+	MaterialGeometry geom;
+	float rel_eps;
+	float rel_mu;
+	int argc;
+	Argument argv[MX_MAX_MAT_ARGS];
+} Material;
 
 #endif

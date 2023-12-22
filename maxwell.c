@@ -4,8 +4,8 @@ bool sim_running = true;
 bool reset_sim = false;
 bool cycle_vis = false;
 
-void key_callback(GLFWwindow* window, int key, int scancode, int action, 
-		int mods) {
+void key_callback(GLFWwindow* window, int key, int __attribute__((unused)) 
+		scancode, int action, int mods) {
 	if (key == GLFW_KEY_C && mods == GLFW_MOD_CONTROL && (action == GLFW_PRESS 
 			|| action == GLFW_REPEAT)) {
 		printf("Caught interrupt - exiting...\n");
@@ -47,6 +47,53 @@ void initFields(Field* field, Simulation* simulation) {
 	}
 }
 
+void addMaterials(Field* field, Simulation* simulation, Material* materials) {
+	for (int m = 0; m < simulation->materialc; m++) {
+		printf("\rApplying material characteristics... (%d/%d)", m, 
+			simulation->materialc);
+		switch (materials[m].geom) {
+			case MG_UNKNOWN:
+				break;
+			case MG_TRIANGLE:
+				float rel_eps, rel_mu;
+				rel_eps = materials[m].argv[0].value.floatVal;
+				rel_mu = materials[m].argv[1].value.floatVal;
+
+				int x1, y1, x2, y2, x3, y3;
+				x1 = materials[m].argv[2].value.intVal;	
+				y1 = materials[m].argv[3].value.intVal;	
+				x2 = materials[m].argv[4].value.intVal;	
+				y2 = materials[m].argv[5].value.intVal;	
+				x3 = materials[m].argv[6].value.intVal;	
+				y3 = materials[m].argv[7].value.intVal;	
+				
+				float d1, d2, d3;
+				bool has_neg, has_pos;
+				int index;
+				for (int y = 0; y < simulation->height; y++) {
+					for (int x = 0; x < simulation->width; x++) {
+						index = y * simulation->width + x;
+						
+						d1 = (x - x2) * (y1 - y2) - (x1 - x2) * (y - y2);
+						d2 = (x - x3) * (y2 - y3) - (x2 - x3) * (y - y3);
+						d3 = (x - x1) * (y3 - y1) - (x3 - x1) * (y - y1);
+
+						has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+						has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+						
+						if (!(has_neg && has_pos)) {
+							field->Epsilon[index] *= rel_eps;
+							field->Mu[index] *= rel_mu;
+						}
+					}
+				}
+			default:
+				break;
+		}
+	}
+	printf("\rApplying material characteristics... done.\n");
+}
+
 float randNormalFloat(void) {
 	return (float)rand() / (float)RAND_MAX;
 }
@@ -60,9 +107,6 @@ float gaussianPulse(float t, float t0, float spread) {
 }
 
 void updateFields(Field* field, Simulation* simulation, Source* sources) {
-	const float eps = 8.854e-12;
-	const float mu = 1.2566e-6;
-
 	simulation->time += simulation->dt;
 
 	// Add sources
@@ -94,10 +138,14 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 		}
 	}
 
+	int index;
+	float eps, mu;
+
 	// Update H field
 	for (int j = 0; j < simulation->height - 1; j++) {
 		for (int i = 0; i < simulation->width; i++) {
-			int index = j * simulation->width + i;
+			index = j * simulation->width + i;
+			mu = field->Mu[index];
 			if (i < simulation->width - 1) {
 				field->Hx[index] -= simulation->dt 
 						/ (mu * simulation->dy) 
@@ -115,10 +163,12 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	// Update E field
     for (int j = 1; j < simulation->height - 1; j++) {
        	for (int i = 1; i < simulation->width - 1; i++) {
-       	    field->Ez[j * simulation->width + i] += (simulation->dt / eps) 
-					* ((field->Hy[j * simulation->width + i] 
-					- field->Hy[j * simulation->width + i - 1]) 
-					/ simulation->dx - (field->Hx[j * simulation->width + i] 
+			index = j * simulation->width + i;
+			eps = field->Epsilon[index];
+       	    field->Ez[index] += (simulation->dt / eps) 
+					* ((field->Hy[index] 
+					- field->Hy[index - 1]) 
+					/ simulation->dx - (field->Hx[index] 
 					- field->Hx[(j - 1) * simulation->width + i]) 
 					/ simulation->dy);
        	}
@@ -229,7 +279,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 
 int main(int argc, char** argv) {
 	// Ensure a simulation description file has been provided
-	if (argc != 2) {
+	if (argc < 2) {
 		fprintf(stderr, "Invalid number of arguments.\n");
 		fprintf(stderr, "Usage: %s sim_file\n", argv[0]);
 		exit(EXIT_FAILURE);
@@ -249,9 +299,10 @@ int main(int argc, char** argv) {
 
 	// Open the file for parsing
 	const int nsections = MX_SIMDEF_NSEC;
-	const char* sections[] = {"[Simulation]", "[Sources]"};
+	const char* sections[] = {"[Simulation]", "[Sources]", "[Materials]"};
 
 	Source sources[MX_MAX_SOURCES];  
+	Material materials[MX_MAX_MATERIALS];
 
 	for (int s = 0; s < nsections; s++) {
 		FILE* sim_file = fopen(argv[1], "r");
@@ -272,7 +323,7 @@ int main(int argc, char** argv) {
 					state = DONE;
 				} else {
 					if (strcmp(line, "") == 0) continue;
-					if (sections[s] == "[Simulation]") {
+					if (strcmp(sections[s], "[Simulation]") == 0) {
 						char key[MX_SIMFILE_MAX_LINEL];
 						char ROL[MX_SIMFILE_MAX_LINEL];
 						if (sscanf(line, "%255s %[^\n]", key, ROL) < 1) {
@@ -298,7 +349,7 @@ int main(int argc, char** argv) {
 							fprintf(stderr, "Warning: Unknown key: "
 									"Simulation.%s - ignoring\n", key);
 						}
-					} else if (sections[s] == "[Sources]") {
+					} else if (strcmp(sections[s], "[Sources]") == 0) {
 						char key[MX_SIMFILE_MAX_LINEL];
 						char ROL[MX_SIMFILE_MAX_LINEL];
 						if (sscanf(line, "%255s %[^\n]", key, ROL) < 1) {
@@ -348,6 +399,50 @@ int main(int argc, char** argv) {
 							sources[simulation.sourcec] = source;
 							simulation.sourcec++;
 						}
+					} else if (strcmp(sections[s], "[Materials]") == 0) {
+						char key[MX_SIMFILE_MAX_LINEL];
+						char ROL[MX_SIMFILE_MAX_LINEL];
+						if (sscanf(line, "%255s %[^\n]", key, ROL) < 1) {
+							fprintf(stderr, "Error: Invalid simulation\n");
+							fclose(sim_file);
+							exit(EXIT_FAILURE);
+						}
+						if (strcmp(key, "Triangle") == 0) {
+							Material material;
+							material.geom = MG_TRIANGLE;
+							material.argc = MX_MAT_ARGC_TRIANGLE;
+							material.argv[0].type = TYPE_FLOAT;
+							material.argv[1].type = TYPE_FLOAT;
+							material.argv[2].type = TYPE_INT;
+							material.argv[3].type = TYPE_INT;
+							material.argv[4].type = TYPE_INT;
+							material.argv[5].type = TYPE_INT;
+							material.argv[6].type = TYPE_INT;
+							material.argv[7].type = TYPE_INT;
+							float rel_eps, rel_mu;
+							int x1, x2, x3, y1, y2, y3;
+							if (sscanf(ROL, "%f %f %d %d %d %d %d %d", 
+									&rel_eps, &rel_mu, &x1, &y1, &x2, &y2, 
+									&x3, &y3) != MX_MAT_ARGC_TRIANGLE) {
+								fprintf(stderr, "Error: Invalid format for "
+										"Material #%d: Triangle\n", 
+										simulation.materialc);
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+							printf("Test load: %f\n", rel_eps);
+							material.argv[0].value.floatVal = rel_eps;
+							material.argv[1].value.floatVal = rel_mu;
+							material.argv[2].value.intVal = x1;
+							material.argv[3].value.intVal = y1;
+							material.argv[4].value.intVal = x2;
+							material.argv[5].value.intVal = y2;
+							material.argv[6].value.intVal = x3;
+							material.argv[7].value.intVal = y3;
+							
+							materials[simulation.materialc] = material;
+							simulation.materialc++;
+						} 
 					} else {
 						fprintf(stderr, "Unknown configuation section\n"); 
 					}
@@ -406,6 +501,7 @@ int main(int argc, char** argv) {
 	field.Hz = Hz;
 
 	initFields(&field, &simulation);
+	addMaterials(&field, &simulation, materials);
 
 	GLuint texture;
 	glGenTextures(1, &texture);
