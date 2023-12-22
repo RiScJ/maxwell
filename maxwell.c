@@ -3,6 +3,15 @@
 bool sim_running = true;
 bool reset_sim = false;
 bool cycle_vis = false;
+bool draw_material_boundaries = true;
+
+int min(int a, int b) {
+	return b ^ ((a ^ b) & -(a < b));
+}
+
+int max (int a, int b) {
+	return a ^ ((a ^ b) & -(a < b));
+}
 
 void key_callback(GLFWwindow* window, int key, int __attribute__((unused)) 
 		scancode, int action, int mods) {
@@ -18,6 +27,14 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 			printf("Resuming simulation.\n");
 		}
 		sim_running = !sim_running;
+	}
+	if (key == GLFW_KEY_B && action == GLFW_PRESS) {
+		if (draw_material_boundaries) {
+			printf("Disabling material boundary rendering.\n");
+		} else {
+			printf("Enabling material boundary rendering.\n");
+		}
+		draw_material_boundaries = !draw_material_boundaries;
 	}
 	if (key == GLFW_KEY_R && action == GLFW_PRESS) {
 		printf("Resetting simulation.\n");
@@ -188,7 +205,8 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
     }
 }
 
-void updateImage(Field* field, Simulation* simulation, Source* sources) {
+void updateImage(Field* field, Simulation* simulation, Source* sources, 
+			Material* materials) {
 	updateFields(field, simulation, sources);	
 	
 	printf("%f\n", field->Ez[512 * simulation->width + 512]);
@@ -269,6 +287,82 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 					break;
 			}
 		}
+	}
+	
+	if (draw_material_boundaries) {
+		for (int m = 0; m < simulation->materialc; m++) {
+			switch (materials[m].geom) {
+				case MG_UNKNOWN:
+					break;
+				case MG_TRIANGLE:
+					int x1, y1, x2, y2, x3, y3;
+					x1 = materials[m].argv[2].value.intVal;
+					y1 = materials[m].argv[3].value.intVal;
+					x2 = materials[m].argv[4].value.intVal;
+					y2 = materials[m].argv[5].value.intVal;
+					x3 = materials[m].argv[6].value.intVal;
+					y3 = materials[m].argv[7].value.intVal;
+					
+					int A1, B1, C1, A2, B2, C2, A3, B3, C3;
+					A1 = y1 - y2;
+					B1 = x2 - x1;
+					C1 = (x1 * y2) - (x2 * y1);
+					A2 = y2 - y3;
+					B2 = x3 - x2;
+					C2 = (x2 * y3) - (x3 * y2);
+					A3 = y3 - y1;
+					B3 = x1 - x3;
+					C3 = (x3 * y1) - (x1 * y3);
+					
+					int L1x1, L1x2, L1y1, L1y2;
+					int L2x1, L2x2, L2y1, L2y2;
+					int L3x1, L3x2, L3y1, L3y2;
+
+					L1x1 = min(x1, x2);
+					L1x2 = max(x1, x2);
+					L1y1 = min(y1, y2);
+					L1y2 = max(y1, y2);
+					L2x1 = min(x2, x3);
+					L2x2 = max(x2, x3);
+					L2y1 = min(y2, y3);
+					L2y2 = max(y2, y3);
+					L3x1 = min(x1, x3);
+					L3x2 = max(x1, x3);
+					L3y1 = min(y1, y3);
+					L3y2 = max(y1, y3);
+
+					int index;
+					float d1, d2, d3;
+					for (int y = 0; y < simulation->height; y++) {
+						for (int x = 0; x < simulation->width; x++) {
+							index = y * simulation->width + x;
+							
+							d1 = abs(A1 * x + B1 * y + C1) / sqrt(A1*A1 
+									+ B1*B1);
+							d2 = abs(A2 * x + B2 * y + C2) / sqrt(A2*A2 
+									+ B2*B2);
+							d3 = abs(A3 * x + B3 * y + C3) / sqrt(A3*A3 
+									+ B3*B3);
+							
+							if ((d1 < MX_MAT_BOUNDARY_PX 
+									&& !(x < L1x1 || x > L1x2 || y < L1y1 
+									|| y > L1y2))
+								|| (d2 < MX_MAT_BOUNDARY_PX 
+									&& !(x < L2x1 || x > L2x2 || y < L2y1 
+									|| y > L2y2))
+								|| (d3 < MX_MAT_BOUNDARY_PX
+									&& !(x < L3x1 || x > L3x2 || y < L3y1 
+									|| y > L3y2))) {
+								visualData[3 * index] = 0;
+								visualData[3 * index + 1] = 0;
+								visualData[3 * index + 2] = 0;
+							} 
+						}
+					} 
+				default:
+					break;	
+			}
+		} 
 	}
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -519,10 +613,10 @@ int main(int argc, char** argv) {
 		if (reset_sim) {
 			initFields(&field, &simulation);
 			simulation.time = 0.0f;
-			updateImage(&field, &simulation, sources);
+			updateImage(&field, &simulation, sources, materials);
 			reset_sim = false;
 		}
-		if (sim_running) updateImage(&field, &simulation, sources);
+		if (sim_running) updateImage(&field, &simulation, sources, materials);
 		
 		glClear(GL_COLOR_BUFFER_BIT);
 		
