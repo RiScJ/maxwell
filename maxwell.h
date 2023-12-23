@@ -116,6 +116,7 @@ typedef struct {
 	float rel_mu;
 	int argc;
 	Argument argv[MX_MAX_MAT_ARGS];
+	int* boundary;
 } Material;
 
 #endif

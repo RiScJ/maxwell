@@ -288,98 +288,99 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			}
 		}
 	}
-	
 	if (draw_material_boundaries) {
 		for (int m = 0; m < simulation->materialc; m++) {
-			switch (materials[m].geom) {
-				case MG_UNKNOWN:
-					break;
-				case MG_TRIANGLE:
-					int x1, y1, x2, y2, x3, y3;
-					x1 = materials[m].argv[2].value.intVal;
-					y1 = materials[m].argv[3].value.intVal;
-					x2 = materials[m].argv[4].value.intVal;
-					y2 = materials[m].argv[5].value.intVal;
-					x3 = materials[m].argv[6].value.intVal;
-					y3 = materials[m].argv[7].value.intVal;
-					
-					int A1, B1, C1, A2, B2, C2, A3, B3, C3;
-					A1 = y1 - y2;
-					B1 = x2 - x1;
-					C1 = (x1 * y2) - (x2 * y1);
-					A2 = y2 - y3;
-					B2 = x3 - x2;
-					C2 = (x2 * y3) - (x3 * y2);
-					A3 = y3 - y1;
-					B3 = x1 - x3;
-					C3 = (x3 * y1) - (x1 * y3);
-					
-					int L1x1, L1x2, L1y1, L1y2;
-					int L2x1, L2x2, L2y1, L2y2;
-					int L3x1, L3x2, L3y1, L3y2;
-
-					L1x1 = min(x1, x2);
-					L1x2 = max(x1, x2);
-					L1y1 = min(y1, y2);
-					L1y2 = max(y1, y2);
-					L2x1 = min(x2, x3);
-					L2x2 = max(x2, x3);
-					L2y1 = min(y2, y3);
-					L2y2 = max(y2, y3);
-					L3x1 = min(x1, x3);
-					L3x2 = max(x1, x3);
-					L3y1 = min(y1, y3);
-					L3y2 = max(y1, y3);
-
-					int index;
-					float d1, d2, d3;
-					float L, R, G, B;
-					for (int y = 0; y < simulation->height; y++) {
-						for (int x = 0; x < simulation->width; x++) {
-							index = y * simulation->width + x;
-							
-							d1 = abs(A1 * x + B1 * y + C1) / sqrt(A1*A1 
-									+ B1*B1);
-							d2 = abs(A2 * x + B2 * y + C2) / sqrt(A2*A2 
-									+ B2*B2);
-							d3 = abs(A3 * x + B3 * y + C3) / sqrt(A3*A3 
-									+ B3*B3);
-							
-							if ((d1 < MX_MAT_BOUNDARY_PX 
-									&& !(x < L1x1 || x > L1x2 || y < L1y1 
-									|| y > L1y2))
-								|| (d2 < MX_MAT_BOUNDARY_PX 
-									&& !(x < L2x1 || x > L2x2 || y < L2y1 
-									|| y > L2y2))
-								|| (d3 < MX_MAT_BOUNDARY_PX
-									&& !(x < L3x1 || x > L3x2 || y < L3y1 
-									|| y > L3y2))) {
-								R = visualData[3 * index];
-								G = visualData[3 * index + 1];
-								B = visualData[3 * index + 2];
-								L = (R + G + B) / 3;
-								if (L > 0.5) {
-									visualData[3 * index] = 0;
-									visualData[3 * index + 1] = 0;
-									visualData[3 * index + 2] = 0;
-								} else {	
-									visualData[3 * index] = 1;
-									visualData[3 * index + 1] = 1;
-									visualData[3 * index + 2] = 1;
-								}
-							} 
-						}
-					} 
-				default:
-					break;	
-			}
-		} 
+			for (int y = 0; y < simulation->height; y++) {
+				for (int x = 0; x < simulation->width; x++) {
+					index = y * simulation->width + x;
+					if (materials[m].boundary[index] == 1) {
+						visualData[3 * index] = 0;
+						visualData[3 * index + 1] = 0;
+						visualData[3 * index + 2] = 0;
+					}
+				}
+			}	
+		}
 	}
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, simulation->width, 
 			simulation->height, 0, GL_RGB, GL_FLOAT, visualData);
 	free(visualData);
+}
+
+void computeMaterialBoundary(Simulation* simulation, Material* material) {
+	for (int m = 0; m <= simulation->materialc; m++) {
+		switch (material->geom) {
+			case MG_UNKNOWN:
+				break;
+			case MG_TRIANGLE:
+				int x1, y1, x2, y2, x3, y3;
+				x1 = material->argv[2].value.intVal;
+				y1 = material->argv[3].value.intVal;
+				x2 = material->argv[4].value.intVal;
+				y2 = material->argv[5].value.intVal;
+				x3 = material->argv[6].value.intVal;
+				y3 = material->argv[7].value.intVal;
+				
+				int A1, B1, C1, A2, B2, C2, A3, B3, C3;
+				A1 = y1 - y2;
+				B1 = x2 - x1;
+				C1 = (x1 * y2) - (x2 * y1);
+				A2 = y2 - y3;
+				B2 = x3 - x2;
+				C2 = (x2 * y3) - (x3 * y2);
+				A3 = y3 - y1;
+				B3 = x1 - x3;
+				C3 = (x3 * y1) - (x1 * y3);
+				
+				int L1x1, L1x2, L1y1, L1y2;
+				int L2x1, L2x2, L2y1, L2y2;
+				int L3x1, L3x2, L3y1, L3y2;
+	
+				L1x1 = min(x1, x2);
+				L1x2 = max(x1, x2);
+				L1y1 = min(y1, y2);
+				L1y2 = max(y1, y2);
+				L2x1 = min(x2, x3);
+				L2x2 = max(x2, x3);
+				L2y1 = min(y2, y3);
+				L2y2 = max(y2, y3);
+				L3x1 = min(x1, x3);
+				L3x2 = max(x1, x3);
+				L3y1 = min(y1, y3);
+				L3y2 = max(y1, y3);
+	
+				int index;
+				float d1, d2, d3;
+				for (int y = 0; y < simulation->height; y++) {
+					for (int x = 0; x < simulation->width; x++) {
+						index = y * simulation->width + x;
+						
+						d1 = abs(A1 * x + B1 * y + C1) / sqrt(A1*A1 
+								+ B1*B1);
+						d2 = abs(A2 * x + B2 * y + C2) / sqrt(A2*A2 
+								+ B2*B2);
+						d3 = abs(A3 * x + B3 * y + C3) / sqrt(A3*A3 
+								+ B3*B3);
+						
+						if ((d1 < MX_MAT_BOUNDARY_PX 
+								&& !(x < L1x1 || x > L1x2 || y < L1y1 
+								|| y > L1y2))
+								|| (d2 < MX_MAT_BOUNDARY_PX 
+								&& !(x < L2x1 || x > L2x2 || y < L2y1 
+								|| y > L2y2))
+								|| (d3 < MX_MAT_BOUNDARY_PX
+								&& !(x < L3x1 || x > L3x2 || y < L3y1 
+								|| y > L3y2))) {
+							material->boundary[index] = 1;
+						} 
+					}
+				} 
+			default:
+				break;	
+		}
+	} 
 }
 
 int main(int argc, char** argv) {
@@ -535,7 +536,6 @@ int main(int argc, char** argv) {
 								fclose(sim_file);
 								exit(EXIT_FAILURE);
 							}
-							printf("Test load: %f\n", rel_eps);
 							material.argv[0].value.floatVal = rel_eps;
 							material.argv[1].value.floatVal = rel_mu;
 							material.argv[2].value.intVal = x1;
@@ -544,7 +544,12 @@ int main(int argc, char** argv) {
 							material.argv[5].value.intVal = y2;
 							material.argv[6].value.intVal = x3;
 							material.argv[7].value.intVal = y3;
-							
+						
+							material.boundary = (int*)
+									calloc(simulation.width 
+									* simulation.height, sizeof(int));
+							printf("bruh: %p\n", material.boundary);
+							computeMaterialBoundary(&simulation, &material);
 							materials[simulation.materialc] = material;
 							simulation.materialc++;
 						} 
@@ -649,9 +654,18 @@ int main(int argc, char** argv) {
 	glfwDestroyWindow(window);
 	glfwTerminate();
 
+	free(Epsilon);
+	free(Mu);
+	free(Ex);
+	free(Ey);
 	free(Ez);
 	free(Hx);
 	free(Hy);
+	free(Hz);
+
+	for (int m = 0; m < simulation.materialc; m++) {
+		free(materials[m].boundary);
+	}
 
 	printf("Goodbye!\n");
 		
