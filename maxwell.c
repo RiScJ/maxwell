@@ -15,11 +15,14 @@ int max (int a, int b) {
 
 void key_callback(GLFWwindow* window, int key, int __attribute__((unused)) 
 		scancode, int action, int mods) {
+	// Handle Ctrl+C to exit the program
 	if (key == GLFW_KEY_C && mods == GLFW_MOD_CONTROL && (action == GLFW_PRESS 
 			|| action == GLFW_REPEAT)) {
 		printf("Caught interrupt - exiting...\n");
 		glfwSetWindowShouldClose(window, GLFW_TRUE);
 	}
+
+	// Toggle simulation running state with spacebar
 	if (key == GLFW_KEY_SPACE && action == GLFW_PRESS) {
 		if (sim_running) {
 			printf("Pausing simulation.\n");
@@ -28,6 +31,8 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 		}
 		sim_running = !sim_running;
 	}
+
+	// Toggle material boundary rendering with 'B' key
 	if (key == GLFW_KEY_B && action == GLFW_PRESS) {
 		if (draw_material_boundaries) {
 			printf("Disabling material boundary rendering.\n");
@@ -36,11 +41,15 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 		}
 		draw_material_boundaries = !draw_material_boundaries;
 	}
+
+	// Reset simulation with 'R' key
 	if (key == GLFW_KEY_R && action == GLFW_PRESS) {
 		printf("Resetting simulation.\n");
 		sim_running = false;
 		reset_sim = true;
 	}
+
+	// Cycle through visualization functions with 'V' key
 	if (key == GLFW_KEY_V && action == GLFW_PRESS) {
 		printf("Advancing to next visualization function.\n");
 		cycle_vis = true;
@@ -64,18 +73,25 @@ void initFields(Field* field, Simulation* simulation) {
 	}
 }
 
-void addMaterials(Field* field, Simulation* simulation, Material* materials) {
+void addMaterials(Field* field, Simulation* simulation, Material* materials) {i
+	// For each user-specified material
 	for (int m = 0; m < simulation->materialc; m++) {
 		printf("\rApplying material characteristics... (%d/%d)", m, 
 			simulation->materialc);
+		
+		// We will implement the properties in a region determined by the 
+		// geometry
 		switch (materials[m].geom) {
 			case MG_UNKNOWN:
 				break;
 			case MG_TRIANGLE:
+				// Extract the relative permittivity and permeability for the
+				// triangular region
 				float rel_eps, rel_mu;
 				rel_eps = materials[m].argv[0].value.floatVal;
 				rel_mu = materials[m].argv[1].value.floatVal;
 
+				// Extract the bounding vertices of the triangle
 				int x1, y1, x2, y2, x3, y3;
 				x1 = materials[m].argv[2].value.intVal;	
 				y1 = materials[m].argv[3].value.intVal;	
@@ -91,6 +107,8 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 					for (int x = 0; x < simulation->width; x++) {
 						index = y * simulation->width + x;
 						
+						// Calculate barycentric coordinates for the point
+						// (x, y) in the simulation grid
 						d1 = (x - x2) * (y1 - y2) - (x1 - x2) * (y - y2);
 						d2 = (x - x3) * (y2 - y3) - (x2 - x3) * (y - y3);
 						d3 = (x - x1) * (y3 - y1) - (x3 - x1) * (y - y1);
@@ -98,6 +116,7 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 						has_neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
 						has_pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
 						
+						// Check if (x, y) is inside the triangular region
 						if (!(has_neg && has_pos)) {
 							field->Epsilon[index] *= rel_eps;
 							field->Mu[index] *= rel_mu;
@@ -116,6 +135,7 @@ float randNormalFloat(void) {
 }
 
 void glfw_error_callback(int error, const char* desc) {
+	// Log GLFW errors to stderr
 	fprintf(stderr, "GLFW error %d: %s\n", error, desc);
 }
 
@@ -124,19 +144,23 @@ float gaussianPulse(float t, float t0, float spread) {
 }
 
 void updateFields(Field* field, Simulation* simulation, Source* sources) {
+	// Increment simulation time
 	simulation->time += simulation->dt;
 
-	// Add sources
+	// Add contributions from user-specified sources
 	for (int i = 0; i < simulation->sourcec; i++) {
 		float sourceVal = 0.0f;
 		switch (sources[i].fxn) {
 			case SINELINFREQ:
+				// Calculate source value for a linear-frequency sinusoid
 				sourceVal = sin(2 * M_PI * sources[i].argv[2].value.floatVal 
 						* simulation->time 
 						+ sources[i].argv[3].value.floatVal);
 				int index = simulation->height 
 						* sources[i].argv[1].value.intVal
 						+ sources[i].argv[0].value.intVal;
+				
+				// Add source value to the specified field component
 				switch (sources[i].fc) {
 					case FC_EZ:
 						field->Ez[index] += sourceVal;
@@ -211,10 +235,10 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 	updateFields(field, simulation, sources);	
 	
 	int index;
-
 	float logMax = log10(MAX_FIELD) - 6;
 	float logMin = log10(MIN_FIELD);
 
+	// Initialize min and max field values for normalization
 	float ezMin, hxMin, hyMin;
 	float ezMax, hxMax, hyMax;
 	ezMin = MAX_FIELD;
@@ -224,6 +248,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 	hxMax = MIN_FIELD;
 	hyMax = MIN_FIELD;
 
+	// Find the min and max field values
 	for (int i = 0; i < simulation->width * simulation->height; ++i) {
 		if (field->Ez[i] < ezMin) ezMin = field->Ez[i];
 		if (field->Ez[i] < ezMin) ezMin = field->Ez[i];
@@ -233,6 +258,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 		if (field->Hy[i] > hyMax) hyMax = field->Hy[i];
 	}
 
+	// Normalize field values and store in the image buffer
 	for (int y = 0; y < simulation->height; ++y) {
 		for (int x = 0; x < simulation->width; ++x) {
 			index = y * simulation->width + x;
@@ -240,6 +266,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			float hxVal = field->Hx[index];
 			float hyVal = field->Hy[index];
 	
+			// Apply user-selected visualization function
 			switch (simulation->vis_fxn) {		
 				case VIS_TE_LIN_RGB:
 					simulation->image[3 * index + 2] = (ezVal - ezMin) 
@@ -287,6 +314,8 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			}
 		}
 	}
+
+	// If material boundary rendering is enabled, draw them over the image
 	if (draw_material_boundaries) {
 		for (int m = 0; m < simulation->materialc; m++) {
 			for (int y = 0; y < simulation->height; y++) {
@@ -302,6 +331,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 		}
 	}
 
+	// Update OpenGL texture with the new image data
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, simulation->width, 
 			simulation->height, 0, GL_RGB, GL_FLOAT, simulation->image);
@@ -313,6 +343,7 @@ void computeMaterialBoundary(Simulation* simulation, Material* material) {
 			case MG_UNKNOWN:
 	 			break;
 			case MG_TRIANGLE:
+				// Extract vertex coordinates
 				int x1, y1, x2, y2, x3, y3;
 				x1 = material->argv[2].value.intVal;
 				y1 = material->argv[3].value.intVal;
@@ -321,6 +352,8 @@ void computeMaterialBoundary(Simulation* simulation, Material* material) {
 				x3 = material->argv[6].value.intVal;
 				y3 = material->argv[7].value.intVal;
 				
+				// Compute coefficients for line equations corresponding to 
+				// the edges of the triangle
 				int A1, B1, C1, A2, B2, C2, A3, B3, C3;
 				A1 = y1 - y2;
 				B1 = x2 - x1;
@@ -332,10 +365,10 @@ void computeMaterialBoundary(Simulation* simulation, Material* material) {
 				B3 = x1 - x3;
 				C3 = (x3 * y1) - (x1 * y3);
 				
+				// Store the min and max extent of the triangle edges
 				int L1x1, L1x2, L1y1, L1y2;
 				int L2x1, L2x2, L2y1, L2y2;
 				int L3x1, L3x2, L3y1, L3y2;
-	
 				L1x1 = min(x1, x2);
 				L1x2 = max(x1, x2);
 				L1y1 = min(y1, y2);
@@ -395,7 +428,9 @@ int main(int argc, char** argv) {
 	simulation.height = -1;
 	simulation.time = 0.0f;
 	simulation.dx = 1e1;
-	simulation.dy = 1e1;
+	simulation.dy = 1e1;i
+	// Calculate timestep based on grid spacing and c - must satisfy stability
+	// condition
 	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
 			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
 	simulation.sourcec = 0;	
@@ -572,14 +607,13 @@ int main(int argc, char** argv) {
 
 	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);
-
-	GLFWwindow* window;
-	
 	if (!glfwInit()) {
 		fprintf(stderr, "Failed to initialize glfw\n");
 		exit(EXIT_FAILURE);
 	}
 
+	// Create a GLFW window for displaying simulation
+	GLFWwindow* window;
 	window = glfwCreateWindow(simulation.width, simulation.height, "Maxwell", 
 			NULL, NULL);
 	if (!window) {
@@ -590,7 +624,7 @@ int main(int argc, char** argv) {
 	glfwMakeContextCurrent(window);
 	glfwSetKeyCallback(window, key_callback);
 
-
+	// Allocate memory for field components
 	Field field;
 	float* Epsilon = (float*)malloc(simulation.width * simulation.height
 			* sizeof(float));
@@ -637,9 +671,11 @@ int main(int argc, char** argv) {
 	field.Hy = Hy;
 	field.Hz = Hz;
 
+	// Initialize the field components and add any user-defined materials
 	initFields(&field, &simulation);
 	addMaterials(&field, &simulation, materials);
 
+	// Allocate memory for simulation image buffer
 	simulation.image = (float*)malloc(3 * simulation.width 
 			* simulation.height * sizeof(float));
 	if (simulation.image == NULL) {
@@ -668,6 +704,7 @@ int main(int argc, char** argv) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+	// Begin main simulation loop
 	while (!glfwWindowShouldClose(window)) {
 		if (cycle_vis) {
 			simulation.vis_fxn++;
@@ -699,6 +736,7 @@ int main(int argc, char** argv) {
 		glfwPollEvents();
 	}
 
+	// Clean up, release allocated resources
 	glfwDestroyWindow(window);
 	glfwTerminate();
 
