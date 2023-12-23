@@ -62,7 +62,8 @@ typedef struct {
 	int sourcec;
 	int materialc;
 	VisualizationFunction vis_fxn;
-} Simulation ;
+	float* image;
+} Simulation;
 
 typedef enum {
 	TYPE_INT,

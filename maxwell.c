@@ -134,7 +134,8 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 				sourceVal = sin(2 * M_PI * sources[i].argv[2].value.floatVal 
 						* simulation->time 
 						+ sources[i].argv[3].value.floatVal);
-				int index = simulation->height * sources[i].argv[1].value.intVal
+				int index = simulation->height 
+						* sources[i].argv[1].value.intVal
 						+ sources[i].argv[0].value.intVal;
 				switch (sources[i].fc) {
 					case FC_EZ:
@@ -209,9 +210,6 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			Material* materials) {
 	updateFields(field, simulation, sources);	
 	
-	//printf("%f\n", field->Ez[512 * simulation->width + 512]);
-	float* visualData = (float*)malloc(3 * simulation->width 
-			* simulation->height * sizeof(float));
 	int index;
 
 	float logMax = log10(MAX_FIELD) - 6;
@@ -244,43 +242,44 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 	
 			switch (simulation->vis_fxn) {		
 				case VIS_TE_LIN_RGB:
-					visualData[3 * index + 2] = (ezVal - ezMin) 
+					simulation->image[3 * index + 2] = (ezVal - ezMin) 
 							/ (ezMax - ezMin);
-					visualData[3 * index + 1] = (hyVal - hyMin) 
+					simulation->image[3 * index + 1] = (hyVal - hyMin) 
 							/ (hyMax - hyMin);
-					visualData[3 * index] = (hxVal - hxMin) 
+					simulation->image[3 * index] = (hxVal - hxMin) 
 							/ (hxMax - hxMin);
 					break;
 				case VIS_TE_LIN_EZ_RGB:
 					float normVal = (ezVal - ezMin) / (ezMax - ezMin);
-					visualData[3 * index + 2] = normVal < 0.5 ? 2 * normVal : 1.0;
-					visualData[3 * index + 0] = normVal < 0.5 ? 2 * normVal 
-							: 2 * (1 - normVal);
-					visualData[3 * index + 1] = normVal > 0.5 ? 2 
-							* (normVal - 0.5) : 0.0;
+					simulation->image[3 * index + 2] = normVal < 0.5 
+							? 2 * normVal : 1.0;
+					simulation->image[3 * index + 0] = normVal < 0.5 
+							? 2 * normVal : 2 * (1 - normVal);
+					simulation->image[3 * index + 1] = normVal > 0.5 
+							? 2 * (normVal - 0.5) : 0.0;
 					break;
 				case VIS_TE_SQR_RGB:
-					visualData[3 * index + 1] = (hyVal*hyVal - hyMin*hyMin) 
-							/ (hyMax*hyMax - hyMin*hyMin); 
-					visualData[3 * index] = (hxVal*hxVal - hxMin*hxMin) 
-							/ (hxMax*hxMax - hxMin*hxMin);
-					visualData[3 * index + 2] = (ezVal*ezVal - ezMin*ezMin) 
-							/ (ezMax*ezMax - ezMin*ezMin); 
+					simulation->image[3 * index + 1] = (hyVal*hyVal 
+							- hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
+					simulation->image[3 * index] = (hxVal*hxVal 
+							- hxMin*hxMin) / (hxMax*hxMax - hxMin*hxMin);
+					simulation->image[3 * index + 2] = (ezVal*ezVal 
+							- ezMin*ezMin) / (ezMax*ezMax - ezMin*ezMin); 
 					break;				
 				case VIS_TE_SQR2_RGB:
-					visualData[3 * index] = (ezVal*ezVal - MIN_FIELD) 
+					simulation->image[3 * index] = (ezVal*ezVal - MIN_FIELD) 
 							/ (MAX_FIELD - MIN_FIELD);
-					visualData[3 * index + 1] = (hxVal*hxVal - MIN_FIELD) 
-							/ (MAX_FIELD - MIN_FIELD);
-					visualData[3 * index + 2] = (hyVal*hyVal - MIN_FIELD) 
-							/ (MAX_FIELD - MIN_FIELD); 
+					simulation->image[3 * index + 1] = (hxVal*hxVal 
+							- MIN_FIELD) / (MAX_FIELD - MIN_FIELD);
+					simulation->image[3 * index + 2] = (hyVal*hyVal 
+							- MIN_FIELD) / (MAX_FIELD - MIN_FIELD); 
 					break;
 				case VIS_TE_LOG_RGB:
-					visualData[3 * index] = (log10(ezVal) - logMin) 
+					simulation->image[3 * index] = (log10(ezVal) - logMin) 
 							/ (logMax - logMin);
-					visualData[3 * index + 1] = (log10(hxVal) - logMin) 
+					simulation->image[3 * index + 1] = (log10(hxVal) - logMin) 
 							/ (logMax - logMin);
-					visualData[3 * index + 2] = (log10(hyVal) - logMin) 
+					simulation->image[3 * index + 2] = (log10(hyVal) - logMin) 
 							/ (logMax - logMin);
 					break;
 				default:
@@ -294,9 +293,9 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 				for (int x = 0; x < simulation->width; x++) {
 					index = y * simulation->width + x;
 					if (materials[m].boundary[index] == 1) {
-						visualData[3 * index] = 0;
-						visualData[3 * index + 1] = 0;
-						visualData[3 * index + 2] = 0;
+						simulation->image[3 * index] = 0;
+						simulation->image[3 * index + 1] = 0;
+						simulation->image[3 * index + 2] = 0;
 					}
 				}
 			}	
@@ -305,15 +304,14 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, simulation->width, 
-			simulation->height, 0, GL_RGB, GL_FLOAT, visualData);
-	free(visualData);
+			simulation->height, 0, GL_RGB, GL_FLOAT, simulation->image);
 }
 
 void computeMaterialBoundary(Simulation* simulation, Material* material) {
 	for (int m = 0; m <= simulation->materialc; m++) {
 		switch (material->geom) {
 			case MG_UNKNOWN:
-				break;
+	 			break;
 			case MG_TRIANGLE:
 				int x1, y1, x2, y2, x3, y3;
 				x1 = material->argv[2].value.intVal;
@@ -548,7 +546,17 @@ int main(int argc, char** argv) {
 							material.boundary = (int*)
 									calloc(simulation.width 
 									* simulation.height, sizeof(int));
-							printf("bruh: %p\n", material.boundary);
+							if (material.boundary == NULL) {
+								fprintf(stderr, "Failed to allocate memory "
+										"for Material #%d's boundary mask.\n",
+										simulation.materialc);
+								for (int m = 0; m < simulation.materialc; 
+										m++) {
+									free(materials[m].boundary);
+								}
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
 							computeMaterialBoundary(&simulation, &material);
 							materials[simulation.materialc] = material;
 							simulation.materialc++;
@@ -558,10 +566,10 @@ int main(int argc, char** argv) {
 					}
 				}
 			}
-		}	
-	
+		}		
 		fclose(sim_file);
 	}
+
 	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);
 
@@ -577,7 +585,7 @@ int main(int argc, char** argv) {
 	if (!window) {
 		fprintf(stderr, "Failed to create glfw window\n");
 		glfwTerminate();
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 	glfwMakeContextCurrent(window);
 	glfwSetKeyCallback(window, key_callback);
@@ -601,6 +609,25 @@ int main(int argc, char** argv) {
 	float* Hz = (float*)malloc(simulation.width * simulation.height
 			* sizeof(float));
 
+	if (Epsilon == NULL || Mu == NULL || Ex == NULL || Ey == NULL 
+			|| Ez == NULL || Hx == NULL || Hy == NULL || Hz == NULL) {
+		fprintf(stderr, "Failed to allocate memory for field object.\n");
+		if (Epsilon != NULL) free(Epsilon);
+		if (Mu != NULL) free(Mu);
+		if (Ex != NULL) free(Ex);
+		if (Ey != NULL) free(Ey);
+		if (Ez != NULL) free(Ez);
+		if (Hx != NULL) free(Hx);
+		if (Hy != NULL) free(Hy);
+		if (Hz != NULL) free(Hz);
+		for (int m = 0; m < simulation.materialc; m++) {
+			free(materials[m].boundary);
+		}
+		glfwDestroyWindow(window);
+		glfwTerminate();
+		exit(EXIT_FAILURE);
+	}
+
 	field.Epsilon = Epsilon;
 	field.Mu = Mu;
 	field.Ex = Ex;
@@ -612,6 +639,27 @@ int main(int argc, char** argv) {
 
 	initFields(&field, &simulation);
 	addMaterials(&field, &simulation, materials);
+
+	simulation.image = (float*)malloc(3 * simulation.width 
+			* simulation.height * sizeof(float));
+	if (simulation.image == NULL) {
+		fprintf(stderr, "Failed to allocate memory for simulation image "
+				"buffer.\n");
+		free(Epsilon);
+		free(Mu);
+		free(Ex);
+		free(Ey);
+		free(Ez);
+		free(Hx);
+		free(Hy);
+		free(Hz);
+		for (int m = 0; m < simulation.materialc; m++) {
+			free(materials[m].boundary);
+		}
+		glfwDestroyWindow(window);
+		glfwTerminate();
+		exit(EXIT_FAILURE);
+	}
 
 	GLuint texture;
 	glGenTextures(1, &texture);
@@ -666,6 +714,8 @@ int main(int argc, char** argv) {
 	for (int m = 0; m < simulation.materialc; m++) {
 		free(materials[m].boundary);
 	}
+
+	free(simulation.image);
 
 	printf("Goodbye!\n");
 		
