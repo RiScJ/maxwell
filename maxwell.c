@@ -577,7 +577,7 @@ int main(int argc, char** argv) {
 	
 	if (!glfwInit()) {
 		fprintf(stderr, "Failed to initialize glfw\n");
-		return -1;
+		exit(EXIT_FAILURE);
 	}
 
 	window = glfwCreateWindow(simulation.width, simulation.height, "Maxwell", 
