@@ -43,4 +43,7 @@ See the `examples` folder for example simulation files.
 
 ## Building
 If you want to use GPU acceleration, you'll need OpenCL. Regardless, you will also need OpenGL and GLFW. Installation will depend on your distribution.
-Simply run `make` to compile the binary.
+Simply run `make` to compile the binary. For a fun demo:
+
+> ./maxwell examples/phased_array_prisms.sim
+
