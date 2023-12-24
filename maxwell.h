@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 #define SPEED_OF_LIGHT 299792458.0
 #define VACUUM_PERMITTIVITY 8.854e-12
@@ -63,6 +64,8 @@ typedef struct {
 	int materialc;
 	VisualizationFunction vis_fxn;
 	float* image;
+	int frame;
+	clock_t start_time;
 } Simulation;
 
 typedef enum {

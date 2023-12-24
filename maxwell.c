@@ -4,6 +4,8 @@ bool sim_running = true;
 bool reset_sim = false;
 bool cycle_vis = false;
 bool draw_material_boundaries = true;
+bool report_framerate = false;
+bool just_resumed = false;
 
 int min(int a, int b) {
 	return b ^ ((a ^ b) & -(a < b));
@@ -28,6 +30,7 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 			printf("Pausing simulation.\n");
 		} else {
 			printf("Resuming simulation.\n");
+			just_resumed = true;
 		}
 		sim_running = !sim_running;
 	}
@@ -40,6 +43,11 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 			printf("Enabling material boundary rendering.\n");
 		}
 		draw_material_boundaries = !draw_material_boundaries;
+	}
+
+	// Report framerate using 'F' key
+	if (key == GLFW_KEY_F && action == GLFW_PRESS) {
+		report_framerate = true;
 	}
 
 	// Reset simulation with 'R' key
@@ -73,7 +81,7 @@ void initFields(Field* field, Simulation* simulation) {
 	}
 }
 
-void addMaterials(Field* field, Simulation* simulation, Material* materials) {i
+void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 	// For each user-specified material
 	for (int m = 0; m < simulation->materialc; m++) {
 		printf("\rApplying material characteristics... (%d/%d)", m, 
@@ -146,6 +154,7 @@ float gaussianPulse(float t, float t0, float spread) {
 void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	// Increment simulation time
 	simulation->time += simulation->dt;
+	simulation->frame++;
 
 	// Add contributions from user-specified sources
 	for (int i = 0; i < simulation->sourcec; i++) {
@@ -428,13 +437,14 @@ int main(int argc, char** argv) {
 	simulation.height = -1;
 	simulation.time = 0.0f;
 	simulation.dx = 1e1;
-	simulation.dy = 1e1;i
+	simulation.dy = 1e1;
 	// Calculate timestep based on grid spacing and c - must satisfy stability
 	// condition
 	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
 			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
 	simulation.sourcec = 0;	
 	simulation.vis_fxn = VIS_TE_SQR2_RGB;
+	simulation.frame = 0;
 
 	// Open the file for parsing
 	const int nsections = MX_SIMDEF_NSEC;
@@ -704,8 +714,18 @@ int main(int argc, char** argv) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
+	simulation.start_time = clock();
+	
 	// Begin main simulation loop
 	while (!glfwWindowShouldClose(window)) {
+		if (report_framerate) {
+			double framerate = ((double) (clock() - simulation.start_time)) 
+					/ CLOCKS_PER_SEC;
+			framerate = simulation.frame / framerate;
+			printf("Simulation averaging %d FPS since last interrupt.\n", 
+					(int)framerate);
+			report_framerate = false;
+		}
 		if (cycle_vis) {
 			simulation.vis_fxn++;
 			if (simulation.vis_fxn == VIS_MAX) simulation.vis_fxn = 0;
@@ -716,6 +736,11 @@ int main(int argc, char** argv) {
 			simulation.time = 0.0f;
 			updateImage(&field, &simulation, sources, materials);
 			reset_sim = false;
+		}
+		if (just_resumed) {
+			simulation.start_time = clock();
+			simulation.frame = 0;
+			just_resumed = false;
 		}
 		if (sim_running) updateImage(&field, &simulation, sources, materials);
 		
