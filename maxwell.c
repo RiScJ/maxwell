@@ -88,7 +88,10 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 	for (int m = 0; m < simulation->materialc; m++) {
 		printf("\rApplying material characteristics... (%d/%d)", m, 
 			simulation->materialc);
-		
+	
+	int index;
+	float rel_eps, rel_mu;
+	
 		// We will implement the properties in a region determined by the 
 		// geometry
 		switch (materials[m].geom) {
@@ -97,7 +100,6 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 			case MG_TRIANGLE:
 				// Extract the relative permittivity and permeability for the
 				// triangular region
-				float rel_eps, rel_mu;
 				rel_eps = materials[m].argv[0].value.floatVal;
 				rel_mu = materials[m].argv[1].value.floatVal;
 
@@ -112,7 +114,6 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 				
 				float d1, d2, d3;
 				bool has_neg, has_pos;
-				int index;
 				for (int y = 0; y < simulation->height; y++) {
 					for (int x = 0; x < simulation->width; x++) {
 						index = y * simulation->width + x;
@@ -133,6 +134,29 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 						}
 					}
 				}
+				break;
+			case MG_CIRCLE:
+				rel_eps = materials[m].argv[0].value.floatVal;
+				rel_mu = materials[m].argv[1].value.floatVal;
+
+				int cx, cy, R;
+				cx = materials[m].argv[2].value.intVal;
+				cy = materials[m].argv[3].value.intVal;
+				R = materials[m].argv[4].value.intVal;
+				
+				float d;
+				for (int y = 0; y < simulation->height; y++) {
+					for (int x = 0; x < simulation->width; x++) {
+						index = y * simulation->width + x;
+						d = (x - cx) * (x - cx);
+						d += (y - cy) * (y - cy);
+						if (d < R * R) {
+							field->Epsilon[index] *= rel_eps;
+							field->Mu[index] *= rel_mu;
+						}
+					}
+				}
+				break;
 			default:
 				break;
 		}
@@ -328,7 +352,7 @@ void visualizeOnCPU(Field* field, Simulation* simulation) {
 	float ezMin;
 	float hxMin;
 	__attribute__((unused)) float hyMin;
-	float ezMax;
+	__attribute__((unused)) float ezMax;
 	float hxMax;
 	float hyMax;
 	ezMin = MAX_FIELD;
@@ -545,80 +569,96 @@ void updateImage(Field* field, Simulation* simulation, Source* sources) {
 }
 
 void computeMaterialBoundary(Simulation* simulation, Material* material) {
-	for (int m = 0; m <= simulation->materialc; m++) {
-		switch (material->geom) {
-			case MG_UNKNOWN:
-	 			break;
-			case MG_TRIANGLE:
-				// Extract vertex coordinates
-				int x1, y1, x2, y2, x3, y3;
-				x1 = material->argv[2].value.intVal;
-				y1 = material->argv[3].value.intVal;
-				x2 = material->argv[4].value.intVal;
-				y2 = material->argv[5].value.intVal;
-				x3 = material->argv[6].value.intVal;
-				y3 = material->argv[7].value.intVal;
-				
-				// Compute coefficients for line equations corresponding to 
-				// the edges of the triangle
-				int A1, B1, C1, A2, B2, C2, A3, B3, C3;
-				A1 = y1 - y2;
-				B1 = x2 - x1;
-				C1 = (x1 * y2) - (x2 * y1);
-				A2 = y2 - y3;
-				B2 = x3 - x2;
-				C2 = (x2 * y3) - (x3 * y2);
-				A3 = y3 - y1;
-				B3 = x1 - x3;
-				C3 = (x3 * y1) - (x1 * y3);
-				
-				// Store the min and max extent of the triangle edges
-				int L1x1, L1x2, L1y1, L1y2;
-				int L2x1, L2x2, L2y1, L2y2;
-				int L3x1, L3x2, L3y1, L3y2;
-				L1x1 = min(x1, x2);
-				L1x2 = max(x1, x2);
-				L1y1 = min(y1, y2);
-				L1y2 = max(y1, y2);
-				L2x1 = min(x2, x3);
-				L2x2 = max(x2, x3);
-				L2y1 = min(y2, y3);
-				L2y2 = max(y2, y3);
-				L3x1 = min(x1, x3);
-				L3x2 = max(x1, x3);
-				L3y1 = min(y1, y3);
-				L3y2 = max(y1, y3);
-	
-				int index;
-				float d1, d2, d3;
-				for (int y = 0; y < simulation->height; y++) {
-					for (int x = 0; x < simulation->width; x++) {
-						index = y * simulation->width + x;
-						
-						d1 = abs(A1 * x + B1 * y + C1) / sqrt(A1*A1 
-								+ B1*B1);
-						d2 = abs(A2 * x + B2 * y + C2) / sqrt(A2*A2 
-								+ B2*B2);
-						d3 = abs(A3 * x + B3 * y + C3) / sqrt(A3*A3 
-								+ B3*B3);
-						
-						if ((d1 < MX_MAT_BOUNDARY_PX 
-								&& !(x < L1x1 || x > L1x2 || y < L1y1 
-								|| y > L1y2))
-								|| (d2 < MX_MAT_BOUNDARY_PX 
-								&& !(x < L2x1 || x > L2x2 || y < L2y1 
-								|| y > L2y2))
-								|| (d3 < MX_MAT_BOUNDARY_PX
-								&& !(x < L3x1 || x > L3x2 || y < L3y1 
-								|| y > L3y2))) {
-							material->boundary[index] = 1;
-						} 
+	int index;
+	switch (material->geom) {
+		case MG_UNKNOWN:
+ 			break;
+		case MG_TRIANGLE:
+			// Extract vertex coordinates
+			int x1, y1, x2, y2, x3, y3;
+			x1 = material->argv[2].value.intVal;
+			y1 = material->argv[3].value.intVal;
+			x2 = material->argv[4].value.intVal;
+			y2 = material->argv[5].value.intVal;
+			x3 = material->argv[6].value.intVal;
+			y3 = material->argv[7].value.intVal;
+			
+			// Compute coefficients for line equations corresponding to 
+			// the edges of the triangle
+			int A1, B1, C1, A2, B2, C2, A3, B3, C3;
+			A1 = y1 - y2;
+			B1 = x2 - x1;
+			C1 = (x1 * y2) - (x2 * y1);
+			A2 = y2 - y3;
+			B2 = x3 - x2;
+			C2 = (x2 * y3) - (x3 * y2);
+			A3 = y3 - y1;
+			B3 = x1 - x3;
+			C3 = (x3 * y1) - (x1 * y3);
+			
+			// Store the min and max extent of the triangle edges
+			int L1x1, L1x2, L1y1, L1y2;
+			int L2x1, L2x2, L2y1, L2y2;
+			int L3x1, L3x2, L3y1, L3y2;
+			L1x1 = min(x1, x2);
+			L1x2 = max(x1, x2);
+			L1y1 = min(y1, y2);
+			L1y2 = max(y1, y2);
+			L2x1 = min(x2, x3);
+			L2x2 = max(x2, x3);
+			L2y1 = min(y2, y3);
+			L2y2 = max(y2, y3);
+			L3x1 = min(x1, x3);
+			L3x2 = max(x1, x3);
+			L3y1 = min(y1, y3);
+			L3y2 = max(y1, y3);
+
+			float d1, d2, d3;
+			for (int y = 0; y < simulation->height; y++) {
+				for (int x = 0; x < simulation->width; x++) {
+					index = y * simulation->width + x;
+					
+					d1 = abs(A1 * x + B1 * y + C1) / sqrt(A1*A1 
+							+ B1*B1);
+					d2 = abs(A2 * x + B2 * y + C2) / sqrt(A2*A2 
+							+ B2*B2);
+					d3 = abs(A3 * x + B3 * y + C3) / sqrt(A3*A3 
+							+ B3*B3);
+					
+					if ((d1 < MX_MAT_BOUNDARY_PX 
+							&& !(x < L1x1 || x > L1x2 || y < L1y1 
+							|| y > L1y2))
+							|| (d2 < MX_MAT_BOUNDARY_PX 
+							&& !(x < L2x1 || x > L2x2 || y < L2y1 
+							|| y > L2y2))
+							|| (d3 < MX_MAT_BOUNDARY_PX
+							&& !(x < L3x1 || x > L3x2 || y < L3y1 
+							|| y > L3y2))) {
+						material->boundary[index] = 1;
+					} 
+				}
+			} 
+			break;
+		case MG_CIRCLE:
+			int xc, yc, R;
+			xc = material->argv[2].value.intVal;
+			yc = material->argv[3].value.intVal;
+			R = material->argv[4].value.intVal;
+			float d;
+			for (int y = 0; y < simulation->height; y++) {
+				for (int x = 0; x < simulation->width; x++) {
+					index = y * simulation->width + x;
+					d = (x - xc) * (x - xc);
+					d += (y - yc) * (y - yc);
+					d = sqrt(d);
+					if (fabs(d - R) < MX_MAT_BOUNDARY_PX) {
+						material->boundary[index] = 1;
 					}
-				} 
-			default:
-				break;	
-		}
-	} 
+				}
+			}
+		default:
+			break;	
+	}
 }
 
 int main(int argc, char** argv) {
@@ -803,7 +843,51 @@ int main(int argc, char** argv) {
 							computeMaterialBoundary(&simulation, &material);
 							materials[simulation.materialc] = material;
 							simulation.materialc++;
-						} 
+						}
+						if (strcmp(key, "Circle") == 0) {
+							Material material;
+							material.geom = MG_CIRCLE;
+							material.argc = MX_MAT_ARGC_CIRCLE;
+							material.argv[0].type = TYPE_FLOAT;
+							material.argv[1].type = TYPE_FLOAT;
+							material.argv[2].type = TYPE_INT;
+							material.argv[3].type = TYPE_INT;
+							material.argv[4].type = TYPE_INT;
+							float rel_eps, rel_mu;
+							int x, y, R;
+							if (sscanf(ROL, "%f %f %d %d %d", &rel_eps, 
+									&rel_mu, &x, &y, &R) 
+									!= MX_MAT_ARGC_CIRCLE) {
+								fprintf(stderr, "Error: Invalid format for "
+										"Material #%d: Circle\n", 
+										simulation.materialc);
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+							material.argv[0].value.floatVal = rel_eps;
+							material.argv[1].value.floatVal = rel_mu;
+							material.argv[2].value.intVal = x;
+							material.argv[3].value.intVal = y;
+							material.argv[4].value.intVal = R;
+
+							material.boundary = (int*)
+									calloc(simulation.width
+									* simulation.height, sizeof(int));
+							if (material.boundary == NULL) {
+								fprintf(stderr, "Failed to allocate memory "
+										"for Material #%d's boundary mask.\n",
+										simulation.materialc);
+								for (int m = 0; m < simulation.materialc;
+										m++) {
+									free(materials[m].boundary);
+								}
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+							computeMaterialBoundary(&simulation, &material);
+							materials[simulation.materialc] = material;
+							simulation.materialc++;
+						}
 					} else {
 						fprintf(stderr, "Unknown configuation section\n"); 
 					}

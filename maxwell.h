@@ -24,6 +24,7 @@
 #define MX_MAX_MATERIALS 1000
 #define MX_MAX_MAT_ARGS 10
 #define MX_MAT_ARGC_TRIANGLE 8
+#define MX_MAT_ARGC_CIRCLE 5
 
 #define MX_MAT_BOUNDARY_PX 1
 
@@ -129,7 +130,8 @@ typedef struct {
 
 typedef enum {
 	MG_UNKNOWN,
-	MG_TRIANGLE
+	MG_TRIANGLE,
+	MG_CIRCLE
 } MaterialGeometry;
 
 typedef struct {
