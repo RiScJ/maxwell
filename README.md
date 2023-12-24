@@ -18,7 +18,7 @@ Maxwell is a work in progress. Currently, it offers:
 To use Maxwell, you must call it with a single argument:
  > ./maxwell [sim_file]
 
-Where sim_file is a user-created configuration file specifying a simulation to run. See [Simulation Files] for more details.
+Where sim_file is a user-created configuration file specifying a simulation to run. See [Simulation Files](#simulation-files) for more details.
 While the simulation is running, there are a variety of options for user-interactivity:
  * [Space] - Pause/resume the simulation
  * [Ctrl]+[C] - Exit the program
