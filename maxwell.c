@@ -321,8 +321,7 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 */
 }
 
-void visualizeOnCPU(Field* field, Simulation* simulation, 
-		Material* materials) {
+void visualizeOnCPU(Field* field, Simulation* simulation) { 
 	int index;
 
 	// Initialize min and max field values for normalization
@@ -361,7 +360,7 @@ void visualizeOnCPU(Field* field, Simulation* simulation,
 			// Apply user-selected visualization function
 			switch (simulation->vis_fxn) {		
 				case VIS_TE_1:
-					float normVal = (ezVal - ezMin) / (ezMax - ezMin);
+					float normVal = (ezVal - -1e1) / (1e2 - -1e1);
 					simulation->image[3 * index + 2] = normVal < 0.5 
 							? 2 * normVal : 1.0;
 					simulation->image[3 * index + 0] = normVal < 0.5 
@@ -385,72 +384,123 @@ void visualizeOnCPU(Field* field, Simulation* simulation,
 	
 	// If material boundary rendering is enabled, draw them over the image
 	if (draw_material_boundaries) {
-		for (int m = 0; m < simulation->materialc; m++) {
-			for (int y = 0; y < simulation->height; y++) {
-				for (int x = 0; x < simulation->width; x++) {
-					index = y * simulation->width + x;
-					if (materials[m].boundary[index] == 1) {
-						simulation->image[3 * index] = 0;
-						simulation->image[3 * index + 1] = 0;
-						simulation->image[3 * index + 2] = 0;
-					}
-				}
-			}	
+		for (int i = 0; i < simulation->width * simulation->height; i++) {
+			if (simulation->matBoundMask[i] == 1) {
+				simulation->image[3 * i] = 0;
+				simulation->image[3 * i + 1] = 0;
+				simulation->image[3 * i + 2] = 0;
+			}
 		}
 	}
 }
 
-void visualizeOnGPU(Field* field, Simulation* simulation, 
-		Material* materials) {
+void visualizeOnGPU(Field* field, Simulation* simulation) { 
 	size_t global_size[2] = {simulation->width, simulation->height};
 
 	cl_int err;
+	float minField, maxField;
+	switch (simulation->vis_fxn) {
+		case VIS_TE_1:
+			switch (err = clEnqueueWriteBuffer(simulation->queue, 
+					simulation->image_kbuf, CL_TRUE, 0, sizeof(float) 
+					* simulation->width * simulation->height * 3, 
+					simulation->image, 0 , NULL, NULL)) {
+				case CL_SUCCESS:
+					break;
+				default:
+					fprintf(stderr, "Error writing image_kbuf: %d\n", err);
+		
+			}
+			clEnqueueWriteBuffer(simulation->queue, simulation->Hx_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Hx, 0 , NULL, NULL);
+			clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Hy, 0 , NULL, NULL);
+			clEnqueueWriteBuffer(simulation->queue, simulation->Ez_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Ez, 0 , NULL, NULL);
 
-	switch (err = clEnqueueWriteBuffer(simulation->queue, 
-			simulation->image_kbuf, CL_TRUE, 0, sizeof(float) 
-			* simulation->width * simulation->height * 3, simulation->image, 
-			0 , NULL, NULL)) {
-		case CL_SUCCESS:
+			minField = -1e1;
+			maxField = 1e2;
+
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 0, sizeof(cl_mem), 
+					&simulation->image_kbuf);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 1, sizeof(cl_mem),
+					&simulation->Hx_kbuf);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 2, sizeof(cl_mem),
+					&simulation->Hy_kbuf);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 3, sizeof(cl_mem),
+					&simulation->Ez_kbuf);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 4, sizeof(float),
+					&minField);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 5, sizeof(float),
+					&maxField);
+			clSetKernelArg(simulation->VIS_TE_1_kernel, 6, sizeof(int),
+					&simulation->width);
+
+			clEnqueueNDRangeKernel(simulation->queue, 
+					simulation->VIS_TE_1_kernel, 2, NULL, global_size, NULL, 
+					0, NULL, NULL);
+			clFinish(simulation->queue);
+			
+			clEnqueueReadBuffer(simulation->queue, simulation->image_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height * 3, simulation->image, 0, NULL, 
+					NULL);
+			break;
+		case VIS_TE_2:
+			switch (err = clEnqueueWriteBuffer(simulation->queue, 
+					simulation->image_kbuf, CL_TRUE, 0, sizeof(float) 
+					* simulation->width * simulation->height * 3, 
+					simulation->image, 0 , NULL, NULL)) {
+				case CL_SUCCESS:
+					break;
+				default:
+					fprintf(stderr, "Error writing image_kbuf: %d\n", err);
+		
+			}
+			clEnqueueWriteBuffer(simulation->queue, simulation->Hx_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Hx, 0 , NULL, NULL);
+			clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Hy, 0 , NULL, NULL);
+			clEnqueueWriteBuffer(simulation->queue, simulation->Ez_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height, field->Ez, 0 , NULL, NULL);
+
+			minField = (float)MIN_FIELD;
+			maxField = (float)MAX_FIELD;
+
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 0, sizeof(cl_mem), 
+					&simulation->image_kbuf);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 1, sizeof(cl_mem),
+					&simulation->Hx_kbuf);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 2, sizeof(cl_mem),
+					&simulation->Hy_kbuf);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 3, sizeof(cl_mem),
+					&simulation->Ez_kbuf);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 4, sizeof(float),
+					&minField);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 5, sizeof(float),
+					&maxField);
+			clSetKernelArg(simulation->VIS_TE_2_kernel, 6, sizeof(int),
+					&simulation->width);
+
+			clEnqueueNDRangeKernel(simulation->queue, 
+					simulation->VIS_TE_2_kernel, 2, NULL, global_size, NULL, 
+					0, NULL, NULL);
+			clFinish(simulation->queue);
+			
+			clEnqueueReadBuffer(simulation->queue, simulation->image_kbuf, 
+					CL_TRUE, 0, sizeof(float) * simulation->width 
+					* simulation->height * 3, simulation->image, 0, NULL, 
+					NULL);
 			break;
 		default:
-			fprintf(stderr, "Error writing image_kbuf: %d\n", err);
-
+			break;
 	}
-	clEnqueueWriteBuffer(simulation->queue, simulation->Hx_kbuf, CL_TRUE,
-			0, sizeof(float) * simulation->width * simulation->height,
-			field->Hx, 0 , NULL, NULL);
-	clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, CL_TRUE,
-			0, sizeof(float) * simulation->width * simulation->height,
-			field->Hy, 0 , NULL, NULL);
-	clEnqueueWriteBuffer(simulation->queue, simulation->Ez_kbuf, CL_TRUE,
-			0, sizeof(float) * simulation->width * simulation->height,
-			field->Ez, 0 , NULL, NULL);
-
-	float minField = (float)MIN_FIELD;
-	float maxField = (float)MAX_FIELD;
-
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 0, sizeof(cl_mem), 
-			&simulation->image_kbuf);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 1, sizeof(cl_mem),
-			&simulation->Hx_kbuf);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 2, sizeof(cl_mem),
-			&simulation->Hy_kbuf);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 3, sizeof(cl_mem),
-			&simulation->Ez_kbuf);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 4, sizeof(float),
-			&minField);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 5, sizeof(float),
-			&maxField);
-	clSetKernelArg(simulation->VIS_TE_2_kernel, 6, sizeof(int),
-			&simulation->width);
-
-	clEnqueueNDRangeKernel(simulation->queue, simulation->VIS_TE_2_kernel, 2, 
-	NULL, global_size, NULL, 0, NULL, NULL);
-	clFinish(simulation->queue);
-	
-	clEnqueueReadBuffer(simulation->queue, simulation->image_kbuf, CL_TRUE,
-			0, sizeof(float) * simulation->width * simulation->height * 3,
-			simulation->image, 0, NULL, NULL);
 
 	if (draw_material_boundaries) {
 		clEnqueueWriteBuffer(simulation->queue, simulation->image_kbuf, 
@@ -479,16 +529,14 @@ void visualizeOnGPU(Field* field, Simulation* simulation,
 	}
 }
 
-void updateImage(Field* field, Simulation* simulation, Source* sources, 
-			Material* materials) {
+void updateImage(Field* field, Simulation* simulation, Source* sources) { 
 	updateFields(field, simulation, sources);	
 	
 	if (gpu_support) {
-		visualizeOnGPU(field, simulation, materials);
+		visualizeOnGPU(field, simulation);
 	} else {
-		visualizeOnCPU(field, simulation, materials);
+		visualizeOnCPU(field, simulation);
 	}
-
 
 	// Update OpenGL texture with the new image data
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -866,6 +914,7 @@ int main(int argc, char** argv) {
 	cl_program program;
 	cl_kernel E_kernel;
 	cl_kernel H_kernel;
+	cl_kernel VIS_TE_1_kernel;
 	cl_kernel VIS_TE_2_kernel;
 	cl_kernel drawMatBounds_kernel;
 	cl_int err;
@@ -1045,6 +1094,18 @@ int main(int argc, char** argv) {
 	}
 
 	if (gpu_support) {
+		VIS_TE_1_kernel = clCreateKernel(program, "visualizeTE1", &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating visualization kernel: TE1\n");
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+
+	if (gpu_support) {
 		VIS_TE_2_kernel = clCreateKernel(program, "visualizeTE2", &err);
 		switch (err) {
 			case CL_SUCCESS:
@@ -1105,6 +1166,7 @@ int main(int argc, char** argv) {
 		simulation.program = program;
 		simulation.E_kernel = E_kernel;
 		simulation.H_kernel = H_kernel;
+		simulation.VIS_TE_1_kernel = VIS_TE_1_kernel;
 		simulation.VIS_TE_2_kernel = VIS_TE_2_kernel;
 		simulation.drawMatBounds_kernel = drawMatBounds_kernel;
 	}
@@ -1173,7 +1235,7 @@ int main(int argc, char** argv) {
 		if (reset_sim) {
 			initFields(&field, &simulation);
 			simulation.time = 0.0f;
-			updateImage(&field, &simulation, sources, materials);
+			updateImage(&field, &simulation, sources);
 			reset_sim = false;
 		}
 		if (just_resumed) {
@@ -1181,7 +1243,7 @@ int main(int argc, char** argv) {
 			simulation.frame = 0;
 			just_resumed = false;
 		}
-		if (sim_running) updateImage(&field, &simulation, sources, materials);
+		if (sim_running) updateImage(&field, &simulation, sources);
 		
 		glClear(GL_COLOR_BUFFER_BIT);
 		

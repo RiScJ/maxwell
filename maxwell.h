@@ -51,6 +51,8 @@ typedef struct {
 	float* Hx;
 	float* Hy;
 	float* Hz;
+	float ezMin;
+	float ezMax;
 } Field;
 
 typedef struct {
@@ -79,6 +81,7 @@ typedef struct {
 	cl_program program;
 	cl_kernel E_kernel;
 	cl_kernel H_kernel;
+	cl_kernel VIS_TE_1_kernel;
 	cl_kernel VIS_TE_2_kernel;
 	cl_kernel drawMatBounds_kernel;
 } Simulation;

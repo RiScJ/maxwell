@@ -20,6 +20,19 @@ __kernel void updateHFields(__global float* Hx, __global float* Hy,
 	Hy[index] += dt / (Mu[index] * dx) * (Ez[index + 1] - Ez[index]);
 }
 
+__kernel void visualizeTE1(__global float* image, __global float* Hx, 
+		__global float* Hy, __global float* Ez, float minField, 
+		float maxField, int width) {
+	int x = get_global_id(0);
+	int y = get_global_id(1);
+	int index = y * width + x;
+	
+	float normVal = (Ez[index] - minField) / (maxField - minField);
+	image[3 * index] = normVal < 0.5 ? 2 * normVal : 2 * (1 - normVal);
+	image[3 * index + 1] = normVal > 0.5 ? 2 * (normVal - 0.5) : 0.0;
+	image[3 * index + 2] = normVal < 0.5 ? 2 * normVal : 1.0;
+}
+
 __kernel void visualizeTE2(__global float* image, __global float* Hx, 
 		__global float* Hy, __global float* Ez, float minField, 
 		float maxField, int width) {
