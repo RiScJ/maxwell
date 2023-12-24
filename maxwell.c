@@ -7,7 +7,7 @@ bool draw_material_boundaries = true;
 bool report_framerate = false;
 bool just_resumed = false;
 bool gpu_support = true;
-bool trying_gpu = false;
+bool trying_gpu = true;
 
 int min(int a, int b) {
 	return b ^ ((a ^ b) & -(a < b));
@@ -153,8 +153,7 @@ float gaussianPulse(float t, float t0, float spread) {
 	return exp(-pow(t / (t0 * spread), 2));
 }
 
-void iterateFieldsOnCPU(Field* field, Simulation* simulation, 
-		Source* sources) {
+void iterateFieldsOnCPU(Field* field, Simulation* simulation) { 
 	int index;
 	float eps, mu;
 
@@ -192,8 +191,7 @@ void iterateFieldsOnCPU(Field* field, Simulation* simulation,
    	}
 }
 
-void iterateFieldsOnGPU(Field* field, Simulation* simulation,
-		Source* sources) {
+void iterateFieldsOnGPU(Field* field, Simulation* simulation) {
 	size_t global_size[2] = {simulation->width, simulation->height};
 
 	clEnqueueWriteBuffer(simulation->queue, simulation->Epsilon_kbuf, CL_TRUE,
@@ -302,9 +300,9 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	}
 
 	if (gpu_support) {
-		iterateFieldsOnGPU(field, simulation, sources);
+		iterateFieldsOnGPU(field, simulation);
 	} else {
-		iterateFieldsOnCPU(field, simulation, sources);
+		iterateFieldsOnCPU(field, simulation);
 	}
 
 /*
@@ -323,17 +321,17 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 */
 }
 
-void updateImage(Field* field, Simulation* simulation, Source* sources, 
-			Material* materials) {
-	updateFields(field, simulation, sources);	
-	
+void visualizeOnCPU(Field* field, Simulation* simulation, 
+		Material* materials) {
 	int index;
-	float logMax = log10(MAX_FIELD) - 6;
-	float logMin = log10(MIN_FIELD);
 
 	// Initialize min and max field values for normalization
-	float ezMin, hxMin, hyMin;
-	float ezMax, hxMax, hyMax;
+	float ezMin;
+	float hxMin;
+	__attribute__((unused)) float hyMin;
+	float ezMax;
+	float hxMax;
+	float hyMax;
 	ezMin = MAX_FIELD;
 	hxMin = MAX_FIELD;
 	hyMin = MAX_FIELD;
@@ -342,7 +340,8 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 	hyMax = MIN_FIELD;
 
 	// Find the min and max field values
-	for (int i = 0; i < simulation->width * simulation->height; ++i) {
+	for (int i = 0; i < simulation->width 
+			* simulation->height; ++i) {
 		if (field->Ez[i] < ezMin) ezMin = field->Ez[i];
 		if (field->Ez[i] < ezMin) ezMin = field->Ez[i];
 		if (field->Hx[i] < hxMin) hxMin = field->Hx[i];
@@ -361,15 +360,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 	
 			// Apply user-selected visualization function
 			switch (simulation->vis_fxn) {		
-				case VIS_TE_LIN_RGB:
-					simulation->image[3 * index + 2] = (ezVal - ezMin) 
-							/ (ezMax - ezMin);
-					simulation->image[3 * index + 1] = (hyVal - hyMin) 
-							/ (hyMax - hyMin);
-					simulation->image[3 * index] = (hxVal - hxMin) 
-							/ (hxMax - hxMin);
-					break;
-				case VIS_TE_LIN_EZ_RGB:
+				case VIS_TE_1:
 					float normVal = (ezVal - ezMin) / (ezMax - ezMin);
 					simulation->image[3 * index + 2] = normVal < 0.5 
 							? 2 * normVal : 1.0;
@@ -378,15 +369,7 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 					simulation->image[3 * index + 1] = normVal > 0.5 
 							? 2 * (normVal - 0.5) : 0.0;
 					break;
-				case VIS_TE_SQR_RGB:
-					simulation->image[3 * index + 1] = (hyVal*hyVal 
-							- hyMin*hyMin) / (hyMax*hyMax - hyMin*hyMin); 
-					simulation->image[3 * index] = (hxVal*hxVal 
-							- hxMin*hxMin) / (hxMax*hxMax - hxMin*hxMin);
-					simulation->image[3 * index + 2] = (ezVal*ezVal 
-							- ezMin*ezMin) / (ezMax*ezMax - ezMin*ezMin); 
-					break;				
-				case VIS_TE_SQR2_RGB:
+				case VIS_TE_2:
 					simulation->image[3 * index] = (ezVal*ezVal - MIN_FIELD) 
 							/ (MAX_FIELD - MIN_FIELD);
 					simulation->image[3 * index + 1] = (hxVal*hxVal 
@@ -394,20 +377,12 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 					simulation->image[3 * index + 2] = (hyVal*hyVal 
 							- MIN_FIELD) / (MAX_FIELD - MIN_FIELD); 
 					break;
-				case VIS_TE_LOG_RGB:
-					simulation->image[3 * index] = (log10(ezVal) - logMin) 
-							/ (logMax - logMin);
-					simulation->image[3 * index + 1] = (log10(hxVal) - logMin) 
-							/ (logMax - logMin);
-					simulation->image[3 * index + 2] = (log10(hyVal) - logMin) 
-							/ (logMax - logMin);
-					break;
 				default:
 					break;
 			}
 		}
 	}
-
+	
 	// If material boundary rendering is enabled, draw them over the image
 	if (draw_material_boundaries) {
 		for (int m = 0; m < simulation->materialc; m++) {
@@ -423,6 +398,97 @@ void updateImage(Field* field, Simulation* simulation, Source* sources,
 			}	
 		}
 	}
+}
+
+void visualizeOnGPU(Field* field, Simulation* simulation, 
+		Material* materials) {
+	size_t global_size[2] = {simulation->width, simulation->height};
+
+	cl_int err;
+
+	switch (err = clEnqueueWriteBuffer(simulation->queue, 
+			simulation->image_kbuf, CL_TRUE, 0, sizeof(float) 
+			* simulation->width * simulation->height * 3, simulation->image, 
+			0 , NULL, NULL)) {
+		case CL_SUCCESS:
+			break;
+		default:
+			fprintf(stderr, "Error writing image_kbuf: %d\n", err);
+
+	}
+	clEnqueueWriteBuffer(simulation->queue, simulation->Hx_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height,
+			field->Hx, 0 , NULL, NULL);
+	clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height,
+			field->Hy, 0 , NULL, NULL);
+	clEnqueueWriteBuffer(simulation->queue, simulation->Ez_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height,
+			field->Ez, 0 , NULL, NULL);
+
+	float minField = (float)MIN_FIELD;
+	float maxField = (float)MAX_FIELD;
+
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 0, sizeof(cl_mem), 
+			&simulation->image_kbuf);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 1, sizeof(cl_mem),
+			&simulation->Hx_kbuf);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 2, sizeof(cl_mem),
+			&simulation->Hy_kbuf);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 3, sizeof(cl_mem),
+			&simulation->Ez_kbuf);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 4, sizeof(float),
+			&minField);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 5, sizeof(float),
+			&maxField);
+	clSetKernelArg(simulation->VIS_TE_2_kernel, 6, sizeof(int),
+			&simulation->width);
+
+	clEnqueueNDRangeKernel(simulation->queue, simulation->VIS_TE_2_kernel, 2, 
+	NULL, global_size, NULL, 0, NULL, NULL);
+	clFinish(simulation->queue);
+	
+	clEnqueueReadBuffer(simulation->queue, simulation->image_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height * 3,
+			simulation->image, 0, NULL, NULL);
+
+	if (draw_material_boundaries) {
+		clEnqueueWriteBuffer(simulation->queue, simulation->image_kbuf, 
+				CL_TRUE, 0, sizeof(float) * simulation->width
+				* simulation->height * 3, simulation->image, 0, NULL, NULL);
+		clEnqueueWriteBuffer(simulation->queue, simulation->matBoundMask_kbuf,
+				CL_TRUE, 0, sizeof(float) * simulation->width 
+				* simulation->height, simulation->matBoundMask, 0, NULL,
+				NULL);	
+
+		clSetKernelArg(simulation->drawMatBounds_kernel, 0, sizeof(cl_mem),
+				&simulation->image_kbuf);
+		clSetKernelArg(simulation->drawMatBounds_kernel, 1, sizeof(cl_mem),
+				&simulation->matBoundMask_kbuf);
+		clSetKernelArg(simulation->drawMatBounds_kernel, 2, sizeof(int),
+				&simulation->width);
+		
+		clEnqueueNDRangeKernel(simulation->queue, 
+				simulation->drawMatBounds_kernel, 2, NULL, global_size, NULL,
+				0, NULL, NULL);
+		clFinish(simulation->queue);
+		
+		clEnqueueReadBuffer(simulation->queue, simulation->image_kbuf, 
+				CL_TRUE, 0, sizeof(float) * simulation->width 
+				* simulation->height * 3, simulation->image, 0, NULL, NULL);
+	}
+}
+
+void updateImage(Field* field, Simulation* simulation, Source* sources, 
+			Material* materials) {
+	updateFields(field, simulation, sources);	
+	
+	if (gpu_support) {
+		visualizeOnGPU(field, simulation, materials);
+	} else {
+		visualizeOnCPU(field, simulation, materials);
+	}
+
 
 	// Update OpenGL texture with the new image data
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -527,7 +593,7 @@ int main(int argc, char** argv) {
 	simulation.dt = MX_DT_SCALE / (SPEED_OF_LIGHT * sqrt(1 / (simulation.dx 
 			* simulation.dx) + 1 / (simulation.dy * simulation.dy)));
 	simulation.sourcec = 0;	
-	simulation.vis_fxn = VIS_TE_SQR2_RGB;
+	simulation.vis_fxn = VIS_TE_1;
 	simulation.frame = 0;
 
 	// Open the file for parsing
@@ -699,6 +765,7 @@ int main(int argc, char** argv) {
 		fclose(sim_file);
 	}
 
+
 	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);
 	if (!glfwInit()) {
@@ -799,6 +866,8 @@ int main(int argc, char** argv) {
 	cl_program program;
 	cl_kernel E_kernel;
 	cl_kernel H_kernel;
+	cl_kernel VIS_TE_2_kernel;
+	cl_kernel drawMatBounds_kernel;
 	cl_int err;
 
 	if (trying_gpu) {
@@ -841,7 +910,12 @@ int main(int argc, char** argv) {
 	}
 	
 	if (gpu_support) {
-		queue = clCreateCommandQueue(context, device, 0, &err);
+		cl_command_queue_properties properties[] = {
+			CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE,
+			0
+		};
+		queue = clCreateCommandQueueWithProperties(context, device, 
+				properties, &err);
 		switch (err) {
 			case CL_SUCCESS:
 				break;
@@ -893,8 +967,10 @@ int main(int argc, char** argv) {
 	}	
 
 	if (gpu_support) {
-		program = clCreateProgramWithSource(context, 1, &kernelSource, NULL, 
-				&err);
+		size_t kernelSourceSize = strlen(kernelSource);
+		const char* kernelSourceArr[] = {kernelSource};
+		program = clCreateProgramWithSource(context, 1, kernelSourceArr, 
+				&kernelSourceSize, &err);
 		switch (err) {
 			case CL_SUCCESS:
 				break;
@@ -967,6 +1043,32 @@ int main(int argc, char** argv) {
 				gpu_support = false;
 		}
 	}
+
+	if (gpu_support) {
+		VIS_TE_2_kernel = clCreateKernel(program, "visualizeTE2", &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating visualization kernel: TE2\n");
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+
+	if (gpu_support) {
+		drawMatBounds_kernel = clCreateKernel(program, 
+				"drawMaterialBoundaries", &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating material boundary rendering "
+						"kernel.\n");
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
 	
 	if (gpu_support) {
 		cl_mem Epsilon_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
@@ -984,17 +1086,27 @@ int main(int argc, char** argv) {
 		cl_mem Hy_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
 				sizeof(float) * simulation.width * simulation.height, NULL, 
 				&err);
+		cl_mem image_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float) * simulation.width * simulation.height * 3, 
+				NULL, &err);
+		cl_mem matBoundMask_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float) * simulation.width * simulation.height, NULL,
+				&err);
 		
 		simulation.Epsilon_kbuf = Epsilon_kbuf;
 		simulation.Mu_kbuf = Mu_kbuf;
 		simulation.Ez_kbuf = Ez_kbuf;
 		simulation.Hx_kbuf = Hx_kbuf;
 		simulation.Hy_kbuf = Hy_kbuf;
+		simulation.image_kbuf = image_kbuf;	
+		simulation.matBoundMask_kbuf = matBoundMask_kbuf;
 		simulation.context = context;
 		simulation.queue = queue;
 		simulation.program = program;
 		simulation.E_kernel = E_kernel;
 		simulation.H_kernel = H_kernel;
+		simulation.VIS_TE_2_kernel = VIS_TE_2_kernel;
+		simulation.drawMatBounds_kernel = drawMatBounds_kernel;
 	}
 	
 	if (trying_gpu) {
@@ -1004,6 +1116,35 @@ int main(int argc, char** argv) {
 			printf("Failed. Falling back to CPU.\n");
 		}
 	} 
+
+	// Aggregate together all material boundaries
+	float* matBoundMask = (float*)calloc(simulation.width * simulation.height,
+			sizeof(float));
+	if (matBoundMask == NULL) {
+		fprintf(stderr, "Failed to allocate memory for aggregated material "
+				"boundary mask.\n");
+		if (gpu_support) free(kernelSource);
+		free(Epsilon);
+		free(Mu);
+		free(Ex);
+		free(Ey);
+		free(Ez);
+		free(Hx);
+		free(Hy);
+		free(Hz);
+		for (int m = 0; m < simulation.materialc; m++) {
+			free(materials[m].boundary);
+		}
+		glfwDestroyWindow(window);
+		glfwTerminate();
+		exit(EXIT_FAILURE);
+	}
+	for (int m = 0; m < simulation.materialc; m++) {
+		for (int i = 0; i < simulation.width * simulation.height; i++) {
+			matBoundMask[i] = matBoundMask[i] || materials[m].boundary[i];
+		}
+	}
+	simulation.matBoundMask = matBoundMask;
 
 	GLuint texture;
 	glGenTextures(1, &texture);
@@ -1079,6 +1220,7 @@ int main(int argc, char** argv) {
 	if (gpu_support) free(kernelSource);
 
 	free(simulation.image);
+	free(matBoundMask);
 
 	printf("Goodbye!\n");
 		

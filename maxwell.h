@@ -2,6 +2,7 @@
 #define MAXWELL_H
 
 #include <GLFW/glfw3.h>
+#define CL_TARGET_OPENCL_VERSION 300
 #include <CL/cl.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -9,6 +10,7 @@
 #include <string.h>
 #include <math.h>
 #include <time.h>
+
 
 #define SPEED_OF_LIGHT 299792458.0
 #define VACUUM_PERMITTIVITY 8.854e-12
@@ -35,11 +37,8 @@
 #define MX_SRC_ARGC_SINELINFREQ 4
 
 typedef enum {
-	VIS_TE_LIN_RGB = 0,
-	VIS_TE_LIN_EZ_RGB,
-	VIS_TE_SQR_RGB,
-	VIS_TE_SQR2_RGB,
-	VIS_TE_LOG_RGB,
+	VIS_TE_1 = 0,
+	VIS_TE_2,
 	VIS_MAX
 } VisualizationFunction;
 
@@ -65,6 +64,7 @@ typedef struct {
 	int materialc;
 	VisualizationFunction vis_fxn;
 	float* image;
+	float* matBoundMask;
 	int frame;
 	clock_t start_time;
 	cl_mem Ez_kbuf;
@@ -72,11 +72,15 @@ typedef struct {
 	cl_mem Hy_kbuf;
 	cl_mem Epsilon_kbuf;
 	cl_mem Mu_kbuf;
+	cl_mem image_kbuf;
+	cl_mem matBoundMask_kbuf;
 	cl_context context;
 	cl_command_queue queue;
 	cl_program program;
 	cl_kernel E_kernel;
 	cl_kernel H_kernel;
+	cl_kernel VIS_TE_2_kernel;
+	cl_kernel drawMatBounds_kernel;
 } Simulation;
 
 typedef enum {
