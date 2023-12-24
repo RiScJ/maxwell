@@ -6,6 +6,8 @@ bool cycle_vis = false;
 bool draw_material_boundaries = true;
 bool report_framerate = false;
 bool just_resumed = false;
+bool gpu_support = true;
+bool trying_gpu = false;
 
 int min(int a, int b) {
 	return b ^ ((a ^ b) & -(a < b));
@@ -151,6 +153,116 @@ float gaussianPulse(float t, float t0, float spread) {
 	return exp(-pow(t / (t0 * spread), 2));
 }
 
+void iterateFieldsOnCPU(Field* field, Simulation* simulation, 
+		Source* sources) {
+	int index;
+	float eps, mu;
+
+	// Update H field
+	for (int j = 0; j < simulation->height - 1; j++) {
+		for (int i = 0; i < simulation->width; i++) {
+			index = j * simulation->width + i;
+			mu = field->Mu[index];
+			if (i < simulation->width - 1) {
+				field->Hx[index] -= simulation->dt 
+						/ (mu * simulation->dy) 
+						* (field->Ez[index + simulation->width] 
+						- field->Ez[index]);
+			}
+			if (j < simulation->height - 1) {
+				field->Hy[index] += simulation->dt 
+						/ (mu * simulation->dx) 
+						* (field->Ez[index + 1] - field->Ez[index]);
+			}
+		}
+	}
+   	
+	// Update E field
+    for (int j = 1; j < simulation->height - 1; j++) {
+       	for (int i = 1; i < simulation->width - 1; i++) {
+			index = j * simulation->width + i;
+			eps = field->Epsilon[index];
+       	    field->Ez[index] += (simulation->dt / eps) 
+					* ((field->Hy[index] 
+					- field->Hy[index - 1]) 
+					/ simulation->dx - (field->Hx[index] 
+					- field->Hx[(j - 1) * simulation->width + i]) 
+					/ simulation->dy);
+       	}
+   	}
+}
+
+void iterateFieldsOnGPU(Field* field, Simulation* simulation,
+		Source* sources) {
+	size_t global_size[2] = {simulation->width, simulation->height};
+
+	clEnqueueWriteBuffer(simulation->queue, simulation->Epsilon_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Epsilon, 0, NULL, NULL);	
+	clEnqueueWriteBuffer(simulation->queue, simulation->Mu_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Mu, 0, NULL, NULL);	
+	clEnqueueWriteBuffer(simulation->queue, simulation->Ez_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Ez, 0, NULL, NULL);	
+	clEnqueueWriteBuffer(simulation->queue, simulation->Hx_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Hx, 0, NULL, NULL);	
+	clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Hy, 0, NULL, NULL);	
+
+	clSetKernelArg(simulation->E_kernel, 0, sizeof(cl_mem), 
+			&simulation->Hx_kbuf);
+	clSetKernelArg(simulation->E_kernel, 1, sizeof(cl_mem), 
+			&simulation->Hy_kbuf);
+	clSetKernelArg(simulation->E_kernel, 2, sizeof(cl_mem), 
+			&simulation->Ez_kbuf);
+	clSetKernelArg(simulation->E_kernel, 3, sizeof(cl_mem), 
+			&simulation->Epsilon_kbuf);
+	clSetKernelArg(simulation->E_kernel, 4, sizeof(cl_mem), 
+			&simulation->Mu_kbuf);
+	clSetKernelArg(simulation->E_kernel, 5, sizeof(float), &simulation->dt);
+	clSetKernelArg(simulation->E_kernel, 6, sizeof(float), &simulation->dy);
+	clSetKernelArg(simulation->E_kernel, 7, sizeof(float), &simulation->dx);
+	clSetKernelArg(simulation->E_kernel, 8, sizeof(int), &simulation->width);
+	clSetKernelArg(simulation->E_kernel, 9, sizeof(int), &simulation->height);
+
+	clEnqueueNDRangeKernel(simulation->queue, simulation->E_kernel, 2, NULL, 
+			global_size, NULL, 0, NULL, NULL);
+	clFinish(simulation->queue);
+	
+	clSetKernelArg(simulation->H_kernel, 0, sizeof(cl_mem), 
+			&simulation->Hx_kbuf);
+	clSetKernelArg(simulation->H_kernel, 1, sizeof(cl_mem), 
+			&simulation->Hy_kbuf);
+	clSetKernelArg(simulation->H_kernel, 2, sizeof(cl_mem), 
+			&simulation->Ez_kbuf);
+	clSetKernelArg(simulation->H_kernel, 3, sizeof(cl_mem), 
+			&simulation->Epsilon_kbuf);
+	clSetKernelArg(simulation->H_kernel, 4, sizeof(cl_mem), 
+			&simulation->Mu_kbuf);
+	clSetKernelArg(simulation->H_kernel, 5, sizeof(float), &simulation->dt);
+	clSetKernelArg(simulation->H_kernel, 6, sizeof(float), &simulation->dy);
+	clSetKernelArg(simulation->H_kernel, 7, sizeof(float), &simulation->dx);
+	clSetKernelArg(simulation->H_kernel, 8, sizeof(int), &simulation->width);
+	clSetKernelArg(simulation->H_kernel, 9, sizeof(int), &simulation->height);
+
+	clEnqueueNDRangeKernel(simulation->queue, simulation->H_kernel, 2, NULL, 
+			global_size, NULL, 0, NULL, NULL);
+	clFinish(simulation->queue);
+
+	clEnqueueReadBuffer(simulation->queue, simulation->Ez_kbuf, CL_TRUE, 
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Ez, 0, NULL, NULL);
+	clEnqueueReadBuffer(simulation->queue, simulation->Hx_kbuf, CL_TRUE, 
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Hx, 0, NULL, NULL);
+	clEnqueueReadBuffer(simulation->queue, simulation->Hy_kbuf, CL_TRUE, 
+			0, sizeof(float) * simulation->width * simulation->height, 
+			field->Hy, 0, NULL, NULL);
+}
+
 void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	// Increment simulation time
 	simulation->time += simulation->dt;
@@ -189,42 +301,13 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 		}
 	}
 
-	int index;
-	float eps, mu;
-
-	// Update H field
-	for (int j = 0; j < simulation->height - 1; j++) {
-		for (int i = 0; i < simulation->width; i++) {
-			index = j * simulation->width + i;
-			mu = field->Mu[index];
-			if (i < simulation->width - 1) {
-				field->Hx[index] -= simulation->dt 
-						/ (mu * simulation->dy) 
-						* (field->Ez[index + simulation->width] 
-						- field->Ez[index]);
-			}
-			if (j < simulation->height - 1) {
-				field->Hy[index] += simulation->dt 
-						/ (mu * simulation->dx) 
-						* (field->Ez[index + 1] - field->Ez[index]);
-			}
-		}
+	if (gpu_support) {
+		iterateFieldsOnGPU(field, simulation, sources);
+	} else {
+		iterateFieldsOnCPU(field, simulation, sources);
 	}
-   	
-	// Update E field
-    for (int j = 1; j < simulation->height - 1; j++) {
-       	for (int i = 1; i < simulation->width - 1; i++) {
-			index = j * simulation->width + i;
-			eps = field->Epsilon[index];
-       	    field->Ez[index] += (simulation->dt / eps) 
-					* ((field->Hy[index] 
-					- field->Hy[index - 1]) 
-					/ simulation->dx - (field->Hx[index] 
-					- field->Hx[(j - 1) * simulation->width + i]) 
-					/ simulation->dy);
-       	}
-   	}
 
+/*
     // Apply PEC boundary conditions: E field is zero at all boundaries
     // Top and bottom boundaries
     for (int i = 0; i < simulation->width; i++) {
@@ -237,6 +320,7 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
         field->Ez[j * simulation->width] = 0; // Left boundary
         field->Ez[j * simulation->width + (simulation->width - 1)] = 0; 
     }
+*/
 }
 
 void updateImage(Field* field, Simulation* simulation, Source* sources, 
@@ -707,6 +791,220 @@ int main(int argc, char** argv) {
 		exit(EXIT_FAILURE);
 	}
 
+	// Initialize OpenCL
+	cl_platform_id platform;
+	cl_device_id device;
+	cl_context context;
+	cl_command_queue queue;
+	cl_program program;
+	cl_kernel E_kernel;
+	cl_kernel H_kernel;
+	cl_int err;
+
+	if (trying_gpu) {
+		printf("Attempting to set up GPU... ");
+	} else {
+		gpu_support = false;
+		printf("Running on CPU.\n");
+	}
+
+	if (gpu_support) {
+		switch (clGetPlatformIDs(1, &platform, NULL)) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error getting platform IDs.\n");
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+		switch(clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, 
+				NULL)) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error getting device IDs.\n");
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+		context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating OpenCL context.\n");
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+		queue = clCreateCommandQueue(context, device, 0, &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating OpenCL command queue.\n");
+				gpu_support = false;
+		}
+	}
+
+	FILE* kernel_file;
+	if (gpu_support) {
+		const char* kernel_filename = "kernel.cl";
+		kernel_file = fopen(kernel_filename, "r");
+		if (!kernel_file) {
+			fprintf(stderr, "Failed to load kernel source file.\n");
+			gpu_support = false;
+		}
+	}
+
+	size_t kernelSize;
+	char* kernelSource;
+	if (gpu_support) {
+		fseek(kernel_file, 0, SEEK_END);
+		kernelSize = ftell(kernel_file);
+		rewind(kernel_file);
+		kernelSource = (char*)malloc(kernelSize + 1);
+	
+		if (!kernelSource) {
+			fprintf(stderr, "Error allocating memory for kernel source.\n");
+			fclose(kernel_file);
+			free(Epsilon);
+			free(Mu);
+			free(Ex);
+			free(Ey);
+			free(Ez);
+			free(Hx);
+			free(Hy);
+			free(Hz);
+			for (int m = 0; m < simulation.materialc; m++) {
+				free(materials[m].boundary);
+			}
+			glfwDestroyWindow(window);
+			glfwTerminate();
+			exit(EXIT_FAILURE);
+		}
+		fread(kernelSource, 1, kernelSize, kernel_file);
+		kernelSource[kernelSize] = '\0';
+		fclose(kernel_file);
+	}	
+
+	if (gpu_support) {
+		program = clCreateProgramWithSource(context, 1, &kernelSource, NULL, 
+				&err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating program from OpenCL kernel."
+						"\n");
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+	    switch (err = clBuildProgram(program, 1, &device, NULL, NULL, NULL)) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error building OpenCL program: %d\n", err);
+				size_t log_size;
+				clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 
+						0, NULL, &log_size);
+				
+				char* log = (char*)malloc(log_size);
+				if (log == NULL) {
+					fprintf(stderr, "Failed to allocate memory for OpenCL "
+							"kernel build log.\n");
+					free(kernelSource);
+					free(Epsilon);
+					free(Mu);
+					free(Ex);
+					free(Ey);
+					free(Ez);
+					free(Hx);
+					free(Hy);
+					free(Hz);
+					for (int m = 0; m < simulation.materialc; m++) {
+						free(materials[m].boundary);
+					}
+					glfwDestroyWindow(window);
+					glfwTerminate();
+					exit(EXIT_FAILURE);
+				}
+				clGetProgramBuildInfo(program, device, CL_PROGRAM_BUILD_LOG, 
+						log_size, log, NULL);
+				fprintf(stderr, "Build log:\n%s\n", log);
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+
+	if (gpu_support) {
+		E_kernel = clCreateKernel(program, "updateEFields", &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating OpenCL kernel: %d\n", err);
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+		H_kernel = clCreateKernel(program, "updateHFields", &err);
+		switch (err) {
+			case CL_SUCCESS:
+				break;
+			default:
+				fprintf(stderr, "Error creating OpenCL kernel: %d\n", err);
+				free(kernelSource);
+				gpu_support = false;
+		}
+	}
+	
+	if (gpu_support) {
+		cl_mem Epsilon_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float) * simulation.width * simulation.height, NULL, 
+				&err);
+		cl_mem Mu_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float) * simulation.width * simulation.height, NULL, 
+				&err);
+		cl_mem Ez_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float) * simulation.width * simulation.height, NULL, 
+				&err);
+		cl_mem Hx_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float) * simulation.width * simulation.height, NULL, 
+				&err);
+		cl_mem Hy_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE, 
+				sizeof(float) * simulation.width * simulation.height, NULL, 
+				&err);
+		
+		simulation.Epsilon_kbuf = Epsilon_kbuf;
+		simulation.Mu_kbuf = Mu_kbuf;
+		simulation.Ez_kbuf = Ez_kbuf;
+		simulation.Hx_kbuf = Hx_kbuf;
+		simulation.Hy_kbuf = Hy_kbuf;
+		simulation.context = context;
+		simulation.queue = queue;
+		simulation.program = program;
+		simulation.E_kernel = E_kernel;
+		simulation.H_kernel = H_kernel;
+	}
+	
+	if (trying_gpu) {
+		if (gpu_support) {
+			printf("Good.\n");
+		} else {
+			printf("Failed. Falling back to CPU.\n");
+		}
+	} 
+
 	GLuint texture;
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
@@ -777,6 +1075,8 @@ int main(int argc, char** argv) {
 	for (int m = 0; m < simulation.materialc; m++) {
 		free(materials[m].boundary);
 	}
+
+	if (gpu_support) free(kernelSource);
 
 	free(simulation.image);
 

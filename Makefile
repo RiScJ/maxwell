@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-Wall -Wextra -lglfw -lGL -lm
+CFLAGS=-Wall -Wextra -lglfw -lGL -lm -lOpenCL
 
 all: maxwell
 

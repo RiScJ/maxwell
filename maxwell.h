@@ -2,6 +2,7 @@
 #define MAXWELL_H
 
 #include <GLFW/glfw3.h>
+#include <CL/cl.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -66,6 +67,16 @@ typedef struct {
 	float* image;
 	int frame;
 	clock_t start_time;
+	cl_mem Ez_kbuf;
+	cl_mem Hx_kbuf;
+	cl_mem Hy_kbuf;
+	cl_mem Epsilon_kbuf;
+	cl_mem Mu_kbuf;
+	cl_context context;
+	cl_command_queue queue;
+	cl_program program;
+	cl_kernel E_kernel;
+	cl_kernel H_kernel;
 } Simulation;
 
 typedef enum {
