@@ -25,6 +25,7 @@ While the simulation is running, there are a variety of options for user-interac
  * [B] - Toggle rendering of material boundaries
  * [F] - Report current average framerate
  * [R] - Reset the simulation to its initial state
+ * [V] - Cycle between visualization functions
 
 ## Simulation Files
 A simulation file consists of multiple sections: `[Simulation]`, `[Sources]`, and `[Materials]`. To begin a section, simply specify its complete name (including square brackets) on a line of its own. Options for the section follow on their own lines. Here are the currently available options:
