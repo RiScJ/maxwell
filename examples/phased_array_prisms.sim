@@ -1,0 +1,48 @@
+[Simulation]
+Height 1000
+Width 1000
+
+[Sources]
+SineLinFreq Hx 400 200 1.2e6 0
+SineLinFreq Hx 405 200 1.2e6 1
+SineLinFreq Hx 410 200 1.2e6 2
+SineLinFreq Hx 415 200 1.2e6 3
+SineLinFreq Hx 420 200 1.2e6 4
+SineLinFreq Hx 425 200 1.2e6 5
+SineLinFreq Hx 430 200 1.2e6 6
+SineLinFreq Hx 445 200 1.2e6 7
+SineLinFreq Hx 450 200 1.2e6 8
+SineLinFreq Hx 455 200 1.2e6 9
+SineLinFreq Hx 460 200 1.2e6 10
+SineLinFreq Hx 465 200 1.2e6 11
+SineLinFreq Hx 470 200 1.2e6 12
+SineLinFreq Hx 475 200 1.2e6 13
+SineLinFreq Hx 480 200 1.2e6 14
+SineLinFreq Hx 485 200 1.2e6 15
+SineLinFreq Hx 490 200 1.2e6 16
+SineLinFreq Hx 495 200 1.2e6 17
+SineLinFreq Hx 500 200 1.2e6 18
+SineLinFreq Hx 505 200 1.2e6 19
+SineLinFreq Hx 510 200 1.2e6 20
+SineLinFreq Hx 515 200 1.2e6 21
+SineLinFreq Hx 520 200 1.2e6 22
+SineLinFreq Hx 525 200 1.2e6 23
+SineLinFreq Hx 530 200 1.2e6 24
+SineLinFreq Hx 535 200 1.2e6 25
+SineLinFreq Hx 540 200 1.2e6 26
+SineLinFreq Hx 545 200 1.2e6 27
+SineLinFreq Hx 550 200 1.2e6 28
+SineLinFreq Hx 555 200 1.2e6 29
+SineLinFreq Hx 560 200 1.2e6 30
+SineLinFreq Hx 565 200 1.2e6 31
+SineLinFreq Hx 570 200 1.2e6 32
+SineLinFreq Hx 575 200 1.2e6 33
+SineLinFreq Hx 580 200 1.2e6 34
+SineLinFreq Hx 585 200 1.2e6 35
+SineLinFreq Hx 590 200 1.2e6 36
+SineLinFreq Hx 595 200 1.2e6 37
+SineLinFreq Hx 600 200 1.2e6 38
+
+[Materials]
+Triangle 5 1 250 250 450 400 250 700
+Triangle 2 4 500 500 600 600 600 700
