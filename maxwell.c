@@ -66,8 +66,26 @@ void key_callback(GLFWwindow* window, int key, int __attribute__((unused))
 	}
 }
 
+int PMLayer(int x, int y, int layers, int width, int height) {
+	int min_x = x < (width - x) ? x : (width - x - 1);
+	int min_y = y < (height - y) ? y : (height - y - 1);
+	int dist_to_edge = min_x < min_y ? min_x : min_y;
+
+	if (dist_to_edge < layers) {
+		return layers - 1 - dist_to_edge;
+	} else {
+		return -1;
+	}
+}
+
+float conductivityPML(Simulation* simulation, int layer) {
+	float norm_layer = (float)layer / (simulation->pml_layers - 1);
+	return simulation->pml_conductivity * pow(norm_layer, 
+			simulation->pml_sigma_polyorder);
+}
+
 void initFields(Field* field, Simulation* simulation) {
-	int index;
+	int index, layer;
 	for (int y = 0; y < simulation->height; ++y) {
 		for (int x = 0; x < simulation->width; ++x) {
 			index = y * simulation->width + x;
@@ -79,6 +97,13 @@ void initFields(Field* field, Simulation* simulation) {
 			field->Hx[index] = 0;
 			field->Hy[index] = 0;
 			field->Hz[index] = 0;
+
+			if ((layer = PMLayer(x, y, simulation->pml_layers, 
+					simulation->width, simulation->height)) >= 0) {
+				field->Sigma[index] = conductivityPML(simulation, layer);
+			} else {
+				field->Sigma[index] = 0;
+			}
 		}
 	}
 }
@@ -233,6 +258,9 @@ void iterateFieldsOnGPU(Field* field, Simulation* simulation) {
 	clEnqueueWriteBuffer(simulation->queue, simulation->Hy_kbuf, CL_TRUE,
 			0, sizeof(float) * simulation->width * simulation->height, 
 			field->Hy, 0, NULL, NULL);	
+	clEnqueueWriteBuffer(simulation->queue, simulation->Sigma_kbuf, CL_TRUE,
+			0, sizeof(float) * simulation->width * simulation->height,
+			field->Sigma, 0, NULL, NULL);
 
 	clSetKernelArg(simulation->E_kernel, 0, sizeof(cl_mem), 
 			&simulation->Hx_kbuf);
@@ -249,6 +277,8 @@ void iterateFieldsOnGPU(Field* field, Simulation* simulation) {
 	clSetKernelArg(simulation->E_kernel, 7, sizeof(float), &simulation->dx);
 	clSetKernelArg(simulation->E_kernel, 8, sizeof(int), &simulation->width);
 	clSetKernelArg(simulation->E_kernel, 9, sizeof(int), &simulation->height);
+	clSetKernelArg(simulation->E_kernel, 10, sizeof(cl_mem), 
+			&simulation->Sigma_kbuf);
 
 	clEnqueueNDRangeKernel(simulation->queue, simulation->E_kernel, 2, NULL, 
 			global_size, NULL, 0, NULL, NULL);
@@ -328,20 +358,19 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	} else {
 		iterateFieldsOnCPU(field, simulation);
 	}
-
 /*
-    // Apply PEC boundary conditions: E field is zero at all boundaries
-    // Top and bottom boundaries
-    for (int i = 0; i < simulation->width; i++) {
-        field->Ez[i] = 0; // Top boundary
-        field->Ez[(simulation->height - 1) * simulation->width + i] = 0;
-    }
-
-    // Left and right boundaries
-    for (int j = 0; j < simulation->height; j++) {
-        field->Ez[j * simulation->width] = 0; // Left boundary
-        field->Ez[j * simulation->width + (simulation->width - 1)] = 0; 
-    }
+	int index;
+	for (int i = 0; i < simulation->height; i++) {
+		for (int j = 0; j < simulation->width; j++) {
+			index = i * simulation->width + j;
+			if (i < 50 || i > simulation->height - 50
+					|| j < 50 || j > simulation->width - 50) {
+				field->Ez[index] = 0; 
+				field->Hx[index] = 0;
+				field->Hy[index] = 0;
+			}
+		}
+	}
 */
 }
 
@@ -683,6 +712,9 @@ int main(int argc, char** argv) {
 	simulation.sourcec = 0;	
 	simulation.vis_fxn = VIS_TE_1;
 	simulation.frame = 0;
+	simulation.pml_layers = 100;
+	simulation.pml_conductivity = 1e-4;
+	simulation.pml_sigma_polyorder = 1;
 
 	// Open the file for parsing
 	const int nsections = MX_SIMDEF_NSEC;
@@ -935,9 +967,12 @@ int main(int argc, char** argv) {
 			* sizeof(float));
 	float* Hz = (float*)malloc(simulation.width * simulation.height
 			* sizeof(float));
+	float* Sigma = (float*)malloc(simulation.width * simulation.height
+			* sizeof(float));
 
 	if (Epsilon == NULL || Mu == NULL || Ex == NULL || Ey == NULL 
-			|| Ez == NULL || Hx == NULL || Hy == NULL || Hz == NULL) {
+			|| Ez == NULL || Hx == NULL || Hy == NULL || Hz == NULL
+			|| Sigma == NULL) {
 		fprintf(stderr, "Failed to allocate memory for field object.\n");
 		if (Epsilon != NULL) free(Epsilon);
 		if (Mu != NULL) free(Mu);
@@ -947,6 +982,7 @@ int main(int argc, char** argv) {
 		if (Hx != NULL) free(Hx);
 		if (Hy != NULL) free(Hy);
 		if (Hz != NULL) free(Hz);
+		if (Sigma != NULL) free(Sigma);
 		for (int m = 0; m < simulation.materialc; m++) {
 			free(materials[m].boundary);
 		}
@@ -963,6 +999,7 @@ int main(int argc, char** argv) {
 	field.Hx = Hx;
 	field.Hy = Hy;
 	field.Hz = Hz;
+	field.Sigma = Sigma;
 
 	// Initialize the field components and add any user-defined materials
 	initFields(&field, &simulation);
@@ -1237,7 +1274,10 @@ int main(int argc, char** argv) {
 		cl_mem matBoundMask_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE,
 				sizeof(float) * simulation.width * simulation.height, NULL,
 				&err);
-		
+		cl_mem Sigma_kbuf = clCreateBuffer(context, CL_MEM_READ_WRITE,
+				sizeof(float) * simulation.width * simulation.height, NULL,
+				&err);		
+
 		simulation.Epsilon_kbuf = Epsilon_kbuf;
 		simulation.Mu_kbuf = Mu_kbuf;
 		simulation.Ez_kbuf = Ez_kbuf;
@@ -1245,6 +1285,7 @@ int main(int argc, char** argv) {
 		simulation.Hy_kbuf = Hy_kbuf;
 		simulation.image_kbuf = image_kbuf;	
 		simulation.matBoundMask_kbuf = matBoundMask_kbuf;
+		simulation.Sigma_kbuf = Sigma_kbuf;
 		simulation.context = context;
 		simulation.queue = queue;
 		simulation.program = program;

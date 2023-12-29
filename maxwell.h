@@ -54,6 +54,7 @@ typedef struct {
 	float* Hz;
 	float ezMin;
 	float ezMax;
+	float* Sigma;
 } Field;
 
 typedef struct {
@@ -69,6 +70,9 @@ typedef struct {
 	float* image;
 	float* matBoundMask;
 	int frame;
+	int pml_layers;
+	float pml_conductivity;
+	int pml_sigma_polyorder;
 	clock_t start_time;
 	cl_mem Ez_kbuf;
 	cl_mem Hx_kbuf;
@@ -77,6 +81,7 @@ typedef struct {
 	cl_mem Mu_kbuf;
 	cl_mem image_kbuf;
 	cl_mem matBoundMask_kbuf;
+	cl_mem Sigma_kbuf;
 	cl_context context;
 	cl_command_queue queue;
 	cl_program program;
