@@ -98,7 +98,8 @@ void initFields(Field* field, Simulation* simulation) {
 			field->Hy[index] = 0;
 			field->Hz[index] = 0;
 
-			if ((layer = PMLayer(x, y, simulation->pml_layers, 
+			if (simulation->boundary_condition == BC_PML
+					&& (layer = PMLayer(x, y, simulation->pml_layers, 
 					simulation->width, simulation->height)) >= 0) {
 				field->Sigma[index] = conductivityPML(simulation, layer);
 			} else {
@@ -358,20 +359,21 @@ void updateFields(Field* field, Simulation* simulation, Source* sources) {
 	} else {
 		iterateFieldsOnCPU(field, simulation);
 	}
-/*
-	int index;
-	for (int i = 0; i < simulation->height; i++) {
-		for (int j = 0; j < simulation->width; j++) {
-			index = i * simulation->width + j;
-			if (i < 50 || i > simulation->height - 50
-					|| j < 50 || j > simulation->width - 50) {
-				field->Ez[index] = 0; 
-				field->Hx[index] = 0;
-				field->Hy[index] = 0;
+	
+	if (simulation->boundary_condition == BC_PEC) {
+		int index;
+		for (int i = 0; i < simulation->height; i++) {
+			for (int j = 0; j < simulation->width; j++) {
+				index = i * simulation->width + j;
+				if (i == 0 || i == simulation->height - 1 || j == 0 
+						|| j == simulation->width - 1) {
+					field->Ez[index] = 0; 
+					field->Hx[index] = 0;
+					field->Hy[index] = 0;
+				}
 			}
 		}
 	}
-*/
 }
 
 void visualizeOnCPU(Field* field, Simulation* simulation) { 
@@ -712,9 +714,10 @@ int main(int argc, char** argv) {
 	simulation.sourcec = 0;	
 	simulation.vis_fxn = VIS_TE_1;
 	simulation.frame = 0;
-	simulation.pml_layers = 100;
-	simulation.pml_conductivity = 1e-4;
-	simulation.pml_sigma_polyorder = 1;
+	simulation.boundary_condition = BC_UNK;
+	simulation.pml_layers = -1;
+	simulation.pml_conductivity = -1;
+	simulation.pml_sigma_polyorder = -1;
 
 	// Open the file for parsing
 	const int nsections = MX_SIMDEF_NSEC;
@@ -763,6 +766,38 @@ int main(int argc, char** argv) {
 										"Simulation.Height\n");
 								fclose(sim_file);
 								exit(EXIT_FAILURE);
+							}
+						} else if (strcmp(key, "Boundary") == 0) {
+							if (sscanf(ROL, "%255s %[^\n]", key, ROL) < 1) {
+								fprintf(stderr, "Error: Invalid boudnary "
+										"conditions.\n");
+								fclose(sim_file);
+								exit(EXIT_FAILURE);
+							}
+							if (strcmp(key, "Natural") == 0) {
+								printf("Using natural boundaries.\n");
+								simulation.boundary_condition = BC_NAT;
+							} else if (strcmp(key, "PEC") == 0) {
+								printf("Using PEC boundaries.\n");
+								simulation.boundary_condition = BC_PEC;
+							} else if (strcmp(key, "PML") == 0) {
+								printf("Using PML boundaries.\n");
+								simulation.boundary_condition = BC_PML;
+								if (strcmp(ROL, "PML") == 0) {
+									printf("No arguments specified for PML "
+											"boundary - using defaults.\n");
+								} else if (sscanf(ROL, "%d %f %d", 
+										&simulation.pml_layers,
+										&simulation.pml_conductivity,
+										&simulation.pml_sigma_polyorder) 
+										!= MX_BC_PML_ARGC) {
+									fprintf(stderr, "Warning: Improper number"
+											" of arguments specified for PML "
+											"boundary - using defaults.\n");
+									simulation.pml_layers = -1;
+									simulation.pml_conductivity = -1;
+									simulation.pml_sigma_polyorder = -1;
+								}
 							}
 						} else {
 							fprintf(stderr, "Warning: Unknown key: "
@@ -929,6 +964,18 @@ int main(int argc, char** argv) {
 		fclose(sim_file);
 	}
 
+	if (simulation.boundary_condition == BC_UNK) {
+		fprintf(stderr, "Warning: No boundary conditions specified - "
+				"defaulting to natural.\n");
+		simulation.boundary_condition = BC_NAT;
+	} else if (simulation.boundary_condition == BC_PML) {
+		if (simulation.pml_layers == -1) 
+				simulation.pml_layers = MX_BC_PML_DEF_LAYERS;
+		if (simulation.pml_conductivity == -1) 
+				simulation.pml_conductivity = MX_BC_PML_DEF_SIGMA;
+		if (simulation.pml_sigma_polyorder == -1) 
+				simulation.pml_sigma_polyorder = MX_BC_PML_DEF_SIGPOLYORDER;
+	}
 
 	// Initialize GLFW
 	glfwSetErrorCallback(glfw_error_callback);

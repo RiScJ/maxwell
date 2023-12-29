@@ -11,7 +11,6 @@
 #include <math.h>
 #include <time.h>
 
-
 #define SPEED_OF_LIGHT 299792458.0
 #define VACUUM_PERMITTIVITY 8.854e-12
 #define VACUUM_PERMEABILITY 1.2566e-6
@@ -37,11 +36,24 @@
 
 #define MX_SRC_ARGC_SINELINFREQ 4
 
+#define MX_BC_DEFAULT BC_NAT
+#define MX_BC_PML_DEF_LAYERS 100
+#define MX_BC_PML_DEF_SIGMA 1e-4
+#define MX_BC_PML_DEF_SIGPOLYORDER 1
+#define MX_BC_PML_ARGC 3
+
 typedef enum {
 	VIS_TE_1 = 0,
 	VIS_TE_2,
 	VIS_MAX
 } VisualizationFunction;
+
+typedef enum {
+	BC_UNK = 0,
+	BC_NAT,
+	BC_PEC,
+	BC_PML
+} BoundaryCondition;
 
 typedef struct {
 	float* Epsilon;
@@ -90,6 +102,7 @@ typedef struct {
 	cl_kernel VIS_TE_1_kernel;
 	cl_kernel VIS_TE_2_kernel;
 	cl_kernel drawMatBounds_kernel;
+	BoundaryCondition boundary_condition;
 } Simulation;
 
 typedef enum {

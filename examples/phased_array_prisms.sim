@@ -1,6 +1,7 @@
 [Simulation]
 Height 1000
 Width 1000
+Boundary PML
 
 [Sources]
 SineLinFreq Hx 400 200 1.2e6 0
