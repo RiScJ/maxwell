@@ -44,10 +44,12 @@ A simulation file consists of multiple sections: `[Simulation]`, `[Sources]`, an
 > SineLinFreq [FieldComponent] [x] [y] [LinearFrequency] [Phase]  
 >  
 > [Materials]  
-> Triangle [RelativePermittivity] [RelativePermeability] [x1] [y1] [x2] [y2] [x3] [y3]  
-> Circle [RelativePermittivity] [RelativePermeability] [x] [y] [R]  
+> Triangle [RelativePermittivity] [RelativePermeability] [Conductivity] [x1] [y1] [x2] [y2] [x3] [y3]  
+> Circle [RelativePermittivity] [RelativePermeability] [Conductivity] [x] [y] [R]  
 
 For PML boundaries, `[layers]` is the number of additional grid-point layers to surround the main simulation space with. `[max_conductivity]` is the maximum conductivity value the PML region will reach, at the farthest point from the simulation region. `[poly_order]` is the order of the polynomial used to fit between the minimum conductivity of 0 at the border with the simulation region, and the maximum value.
+
+For material properties, permittivities and permeabilities are multiplicative, while conductivities are additive. 
 
 See the `examples` folder for example simulation files.
 
