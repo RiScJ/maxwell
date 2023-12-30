@@ -38,6 +38,7 @@ A simulation file consists of multiple sections: `[Simulation]`, `[Sources]`, an
 > Width [Width]  
 > Height [Height]  
 > Boundary {Natural, PEC, PML [layers] [max_conductivity] [poly_order]}  
+> ComputeOn {CPU, GPU}  
 >  
 > [Sources]  
 > SineLinFreq [FieldComponent] [x] [y] [LinearFrequency] [Phase]  

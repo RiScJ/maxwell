@@ -207,7 +207,6 @@ void iterateFieldsOnCPU(Field* field, Simulation* simulation) {
 	int index;
 	float eps, mu;
 
-   	
 	// Update E field
     for (int j = 1; j < simulation->height - 1; j++) {
        	for (int i = 1; i < simulation->width - 1; i++) {
@@ -223,7 +222,6 @@ void iterateFieldsOnCPU(Field* field, Simulation* simulation) {
 					/ field->Epsilon[index]);
        	}
    	}
-
 
 	// Update H field
 	for (int j = 0; j < simulation->height - 1; j++) {
