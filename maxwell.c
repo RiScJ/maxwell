@@ -767,6 +767,10 @@ int main(int argc, char** argv) {
 								fclose(sim_file);
 								exit(EXIT_FAILURE);
 							}
+						} else if (strcmp(key, "ComputeOn") == 0) {
+							if (strcmp(ROL, "CPU") == 0) {
+								trying_gpu = false;
+							}
 						} else if (strcmp(key, "Boundary") == 0) {
 							if (sscanf(ROL, "%255s %[^\n]", key, ROL) < 1) {
 								fprintf(stderr, "Error: Invalid boudnary "
