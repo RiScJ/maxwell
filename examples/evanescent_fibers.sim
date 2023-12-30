@@ -1,0 +1,17 @@
+[Simulation]
+Width 500
+Height 500
+Boundary PEC
+
+[Sources]
+SineLinFreq Hy 100 250 4e5 0
+
+[Materials]
+Triangle 1 1 1e-5 0 0 0 500 500 0
+Triangle 1 1 1e-5 0 500 500 0 500 500
+
+Triangle 2 10 -1e-5 105 245 105 255 400 245
+Triangle 2 10 -1e-5 105 255 400 245 400 255
+
+Triangle 2 10 -1e-5 175 260 175 270 400 260
+Triangle 2 10 -1e-5 175 270 400 260 400 270

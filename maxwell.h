@@ -22,8 +22,8 @@
 
 #define MX_MAX_MATERIALS 1000
 #define MX_MAX_MAT_ARGS 10
-#define MX_MAT_ARGC_TRIANGLE 8
-#define MX_MAT_ARGC_CIRCLE 5
+#define MX_MAT_ARGC_TRIANGLE 9
+#define MX_MAT_ARGC_CIRCLE 6
 
 #define MX_MAT_BOUNDARY_PX 1
 
@@ -156,6 +156,7 @@ typedef struct {
 	MaterialGeometry geom;
 	float rel_eps;
 	float rel_mu;
+	float sigma;
 	int argc;
 	Argument argv[MX_MAX_MAT_ARGS];
 	int* boundary;

@@ -116,7 +116,7 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 			simulation->materialc);
 	
 	int index;
-	float rel_eps, rel_mu;
+	float rel_eps, rel_mu, sigma;
 	
 		// We will implement the properties in a region determined by the 
 		// geometry
@@ -128,15 +128,16 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 				// triangular region
 				rel_eps = materials[m].argv[0].value.floatVal;
 				rel_mu = materials[m].argv[1].value.floatVal;
+				sigma = materials[m].argv[2].value.floatVal;
 
 				// Extract the bounding vertices of the triangle
 				int x1, y1, x2, y2, x3, y3;
-				x1 = materials[m].argv[2].value.intVal;	
-				y1 = materials[m].argv[3].value.intVal;	
-				x2 = materials[m].argv[4].value.intVal;	
-				y2 = materials[m].argv[5].value.intVal;	
-				x3 = materials[m].argv[6].value.intVal;	
-				y3 = materials[m].argv[7].value.intVal;	
+				x1 = materials[m].argv[3].value.intVal;	
+				y1 = materials[m].argv[4].value.intVal;	
+				x2 = materials[m].argv[5].value.intVal;	
+				y2 = materials[m].argv[6].value.intVal;	
+				x3 = materials[m].argv[7].value.intVal;	
+				y3 = materials[m].argv[8].value.intVal;	
 				
 				float d1, d2, d3;
 				bool has_neg, has_pos;
@@ -157,6 +158,7 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 						if (!(has_neg && has_pos)) {
 							field->Epsilon[index] *= rel_eps;
 							field->Mu[index] *= rel_mu;
+							field->Sigma[index] += sigma;
 						}
 					}
 				}
@@ -164,11 +166,12 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 			case MG_CIRCLE:
 				rel_eps = materials[m].argv[0].value.floatVal;
 				rel_mu = materials[m].argv[1].value.floatVal;
+				sigma = materials[m].argv[2].value.floatVal;
 
 				int cx, cy, R;
-				cx = materials[m].argv[2].value.intVal;
-				cy = materials[m].argv[3].value.intVal;
-				R = materials[m].argv[4].value.intVal;
+				cx = materials[m].argv[3].value.intVal;
+				cy = materials[m].argv[4].value.intVal;
+				R = materials[m].argv[5].value.intVal;
 				
 				float d;
 				for (int y = 0; y < simulation->height; y++) {
@@ -179,6 +182,7 @@ void addMaterials(Field* field, Simulation* simulation, Material* materials) {
 						if (d < R * R) {
 							field->Epsilon[index] *= rel_eps;
 							field->Mu[index] *= rel_mu;
+							field->Sigma[index] += sigma;
 						}
 					}
 				}
@@ -609,12 +613,12 @@ void computeMaterialBoundary(Simulation* simulation, Material* material) {
 		case MG_TRIANGLE:
 			// Extract vertex coordinates
 			int x1, y1, x2, y2, x3, y3;
-			x1 = material->argv[2].value.intVal;
-			y1 = material->argv[3].value.intVal;
-			x2 = material->argv[4].value.intVal;
-			y2 = material->argv[5].value.intVal;
-			x3 = material->argv[6].value.intVal;
-			y3 = material->argv[7].value.intVal;
+			x1 = material->argv[3].value.intVal;
+			y1 = material->argv[4].value.intVal;
+			x2 = material->argv[5].value.intVal;
+			y2 = material->argv[6].value.intVal;
+			x3 = material->argv[7].value.intVal;
+			y3 = material->argv[8].value.intVal;
 			
 			// Compute coefficients for line equations corresponding to 
 			// the edges of the triangle
@@ -674,9 +678,9 @@ void computeMaterialBoundary(Simulation* simulation, Material* material) {
 			break;
 		case MG_CIRCLE:
 			int xc, yc, R;
-			xc = material->argv[2].value.intVal;
-			yc = material->argv[3].value.intVal;
-			R = material->argv[4].value.intVal;
+			xc = material->argv[3].value.intVal;
+			yc = material->argv[4].value.intVal;
+			R = material->argv[5].value.intVal;
 			float d;
 			for (int y = 0; y < simulation->height; y++) {
 				for (int x = 0; x < simulation->width; x++) {
@@ -873,17 +877,18 @@ int main(int argc, char** argv) {
 							material.argc = MX_MAT_ARGC_TRIANGLE;
 							material.argv[0].type = TYPE_FLOAT;
 							material.argv[1].type = TYPE_FLOAT;
-							material.argv[2].type = TYPE_INT;
+							material.argv[2].type = TYPE_FLOAT;
 							material.argv[3].type = TYPE_INT;
 							material.argv[4].type = TYPE_INT;
 							material.argv[5].type = TYPE_INT;
 							material.argv[6].type = TYPE_INT;
 							material.argv[7].type = TYPE_INT;
-							float rel_eps, rel_mu;
+							material.argv[8].type = TYPE_INT;
+							float rel_eps, rel_mu, sigma;
 							int x1, x2, x3, y1, y2, y3;
-							if (sscanf(ROL, "%f %f %d %d %d %d %d %d", 
-									&rel_eps, &rel_mu, &x1, &y1, &x2, &y2, 
-									&x3, &y3) != MX_MAT_ARGC_TRIANGLE) {
+							if (sscanf(ROL, "%f %f %f %d %d %d %d %d %d", 
+									&rel_eps, &rel_mu, &sigma, &x1, &y1, &x2, 
+									&y2, &x3, &y3) != MX_MAT_ARGC_TRIANGLE) {
 								fprintf(stderr, "Error: Invalid format for "
 										"Material #%d: Triangle\n", 
 										simulation.materialc);
@@ -892,12 +897,13 @@ int main(int argc, char** argv) {
 							}
 							material.argv[0].value.floatVal = rel_eps;
 							material.argv[1].value.floatVal = rel_mu;
-							material.argv[2].value.intVal = x1;
-							material.argv[3].value.intVal = y1;
-							material.argv[4].value.intVal = x2;
-							material.argv[5].value.intVal = y2;
-							material.argv[6].value.intVal = x3;
-							material.argv[7].value.intVal = y3;
+							material.argv[2].value.floatVal = sigma;
+							material.argv[3].value.intVal = x1;
+							material.argv[4].value.intVal = y1;
+							material.argv[5].value.intVal = x2;
+							material.argv[6].value.intVal = y2;
+							material.argv[7].value.intVal = x3;
+							material.argv[8].value.intVal = y3;
 						
 							material.boundary = (int*)
 									calloc(simulation.width 
@@ -923,13 +929,14 @@ int main(int argc, char** argv) {
 							material.argc = MX_MAT_ARGC_CIRCLE;
 							material.argv[0].type = TYPE_FLOAT;
 							material.argv[1].type = TYPE_FLOAT;
-							material.argv[2].type = TYPE_INT;
+							material.argv[2].type = TYPE_FLOAT;
 							material.argv[3].type = TYPE_INT;
 							material.argv[4].type = TYPE_INT;
-							float rel_eps, rel_mu;
+							material.argv[5].type = TYPE_INT;
+							float rel_eps, rel_mu, sigma;
 							int x, y, R;
-							if (sscanf(ROL, "%f %f %d %d %d", &rel_eps, 
-									&rel_mu, &x, &y, &R) 
+							if (sscanf(ROL, "%f %f %f %d %d %d", &rel_eps, 
+									&rel_mu, &sigma, &x, &y, &R) 
 									!= MX_MAT_ARGC_CIRCLE) {
 								fprintf(stderr, "Error: Invalid format for "
 										"Material #%d: Circle\n", 
@@ -939,6 +946,7 @@ int main(int argc, char** argv) {
 							}
 							material.argv[0].value.floatVal = rel_eps;
 							material.argv[1].value.floatVal = rel_mu;
+							material.argv[2].value.floatVal = sigma;
 							material.argv[2].value.intVal = x;
 							material.argv[3].value.intVal = y;
 							material.argv[4].value.intVal = R;
