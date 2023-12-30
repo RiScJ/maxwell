@@ -207,6 +207,24 @@ void iterateFieldsOnCPU(Field* field, Simulation* simulation) {
 	int index;
 	float eps, mu;
 
+   	
+	// Update E field
+    for (int j = 1; j < simulation->height - 1; j++) {
+       	for (int i = 1; i < simulation->width - 1; i++) {
+			index = j * simulation->width + i;
+			eps = field->Epsilon[index];
+       	    field->Ez[index] += (simulation->dt / eps) 
+					* ((field->Hy[index] 
+					- field->Hy[index - 1]) 
+					/ simulation->dx - (field->Hx[index] 
+					- field->Hx[(j - 1) * simulation->width + i]) 
+					/ simulation->dy)
+					- (simulation->dt * field->Sigma[index] * field->Ez[index]
+					/ field->Epsilon[index]);
+       	}
+   	}
+
+
 	// Update H field
 	for (int j = 0; j < simulation->height - 1; j++) {
 		for (int i = 0; i < simulation->width; i++) {
@@ -225,20 +243,6 @@ void iterateFieldsOnCPU(Field* field, Simulation* simulation) {
 			}
 		}
 	}
-   	
-	// Update E field
-    for (int j = 1; j < simulation->height - 1; j++) {
-       	for (int i = 1; i < simulation->width - 1; i++) {
-			index = j * simulation->width + i;
-			eps = field->Epsilon[index];
-       	    field->Ez[index] += (simulation->dt / eps) 
-					* ((field->Hy[index] 
-					- field->Hy[index - 1]) 
-					/ simulation->dx - (field->Hx[index] 
-					- field->Hx[(j - 1) * simulation->width + i]) 
-					/ simulation->dy);
-       	}
-   	}
 }
 
 void iterateFieldsOnGPU(Field* field, Simulation* simulation) {
